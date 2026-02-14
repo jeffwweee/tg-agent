@@ -14,7 +14,6 @@ import { readFile, writeFile, unlink, mkdir, rename } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir, tmpdir } from 'os';
-import { argv } from 'process';
 
 // Configuration
 const STATE_DIR = process.env.STATE_DIR || join(homedir(), '.claude');
@@ -196,31 +195,61 @@ async function clearPending() {
 }
 
 /**
- * Extract assistant message from Claude transcript
+ * Extract the last assistant message with text content from Claude transcript (JSONL format)
  */
-function extractAssistantMessage(transcript) {
-  if (!transcript || !transcript.entries) {
+function extractAssistantMessage(transcriptContent) {
+  if (!transcriptContent) {
     return null;
   }
 
-  // Find the last assistant message
-  const entries = [...transcript.entries].reverse();
-  for (const entry of entries) {
+  // Parse JSONL - each line is a separate JSON object
+  const lines = transcriptContent.trim().split('\n');
+  const entries = [];
+
+  for (const line of lines) {
+    try {
+      entries.push(JSON.parse(line));
+    } catch {
+      // Skip malformed lines
+    }
+  }
+
+  // Find the last assistant message with actual text content
+  const reversedEntries = [...entries].reverse();
+  for (const entry of reversedEntries) {
     if (entry.type === 'assistant' && entry.message?.content) {
-      // Extract text from content blocks
+      const content = entry.message.content;
+
+      // Extract only text blocks (skip thinking, tool_use, etc.)
       const textParts = [];
-      for (const block of entry.message.content) {
-        if (block.type === 'text') {
-          textParts.push(block.text);
-        } else if (block.type === 'tool_use') {
-          textParts.push(`[Tool: ${block.name}]`);
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === 'text' && block.text) {
+            textParts.push(block.text);
+          }
         }
+      } else if (typeof content === 'string') {
+        textParts.push(content);
       }
-      return textParts.join('\n\n');
+
+      // Only return if we found actual text content
+      if (textParts.length > 0) {
+        return textParts.join('\n\n');
+      }
     }
   }
 
   return null;
+}
+
+/**
+ * Expand tilde in path
+ */
+function expandPath(filePath) {
+  if (filePath.startsWith('~/')) {
+    return join(homedir(), filePath.slice(2));
+  }
+  return filePath;
 }
 
 /**
@@ -241,41 +270,43 @@ async function main() {
     return;
   }
 
-  // Read transcript from stdin or file
-  let transcriptData = null;
+  // Read hook input from stdin (contains transcript_path)
+  let hookInput = null;
+  try {
+    const stdin = [];
+    for await (const chunk of process.stdin) {
+      stdin.push(chunk);
+    }
+    const input = Buffer.concat(stdin).toString('utf-8');
+    if (input) {
+      hookInput = JSON.parse(input);
+    }
+  } catch (err) {
+    console.error('Failed to parse stdin:', err);
+  }
 
-  // Check if transcript path is provided as argument
-  const transcriptPath = argv[2];
+  // Read transcript from the path provided in hook input
+  let transcriptContent = null;
 
-  if (transcriptPath) {
-    const content = await safeRead(transcriptPath);
-    if (content) {
-      try {
-        transcriptData = JSON.parse(content);
-      } catch {
-        console.error('Failed to parse transcript file');
-      }
+  if (hookInput?.transcript_path) {
+    const transcriptPath = expandPath(hookInput.transcript_path);
+    console.error('Reading transcript from:', transcriptPath);
+
+    // Wait a bit for the transcript to be flushed to disk
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    transcriptContent = await safeRead(transcriptPath);
+    if (!transcriptContent) {
+      console.error('Failed to read transcript file:', transcriptPath);
     }
   } else {
-    // Try reading from stdin
-    try {
-      const stdin = [];
-      for await (const chunk of process.stdin) {
-        stdin.push(chunk);
-      }
-      const input = Buffer.concat(stdin).toString('utf-8');
-      if (input) {
-        transcriptData = JSON.parse(input);
-      }
-    } catch {
-      // No stdin data
-    }
+    console.error('No transcript_path in hook input');
   }
 
   // Extract message
   let message;
-  if (transcriptData) {
-    message = extractAssistantMessage(transcriptData);
+  if (transcriptContent) {
+    message = extractAssistantMessage(transcriptContent);
   }
 
   if (!message) {

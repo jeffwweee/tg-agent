@@ -71,7 +71,9 @@ export async function sendKeysWithEnter(keys: string, session?: string): Promise
     throw new Error(`tmux session "${sessionName}" does not exist`);
   }
 
-  await execAsync(`tmux send-keys -t ${sessionName} -l "${escapeForTmux(keys)}" Enter`);
+  // Send text with -l (literal), then Enter separately without -l
+  await execAsync(`tmux send-keys -t ${sessionName} -l "${escapeForTmux(keys)}"`);
+  await execAsync(`tmux send-keys -t ${sessionName} Enter`);
 }
 
 /**
