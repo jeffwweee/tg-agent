@@ -5,7 +5,11 @@
  * - Send messages
  * - Send chat actions (typing indicator)
  * - Verify user permissions
+ * - Retry logic with exponential backoff
+ * - Request timeout handling
  */
+
+import { withRetry, isRetryableError } from '../utils/retry.js';
 
 // Telegram Bot API types
 export interface TelegramUser {
@@ -63,37 +67,92 @@ export interface TelegramResponse<T> {
   description?: string;
 }
 
+export interface InlineKeyboardButton {
+  text: string;
+  callback_data?: string;
+  url?: string;
+}
+
+export interface InlineKeyboardMarkup {
+  inline_keyboard: InlineKeyboardButton[][];
+}
+
+// Client configuration
+interface ClientConfig {
+  timeoutMs: number;
+  maxRetries: number;
+  retryDelayMs: number;
+}
+
+const DEFAULT_CONFIG: ClientConfig = {
+  timeoutMs: 30000,
+  maxRetries: 3,
+  retryDelayMs: 1000,
+};
+
 // API client
 class TelegramClient {
   private token: string;
   private baseUrl: string;
+  private config: ClientConfig;
 
-  constructor(token?: string) {
+  constructor(token?: string, config?: Partial<ClientConfig>) {
     this.token = token || process.env.TELEGRAM_BOT_TOKEN || '';
     if (!this.token) {
       throw new Error('TELEGRAM_BOT_TOKEN is required');
     }
     this.baseUrl = `https://api.telegram.org/bot${this.token}`;
+    this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
   /**
-   * Make API request
+   * Make API request with retry and timeout
    */
   private async request<T>(method: string, params?: Record<string, unknown>): Promise<T> {
     const url = `${this.baseUrl}/${method}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: params ? JSON.stringify(params) : undefined,
-    });
 
-    const data = await response.json() as TelegramResponse<T>;
+    return withRetry(
+      async () => {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs);
 
-    if (!data.ok) {
-      throw new Error(`Telegram API error: ${data.description || 'Unknown error'}`);
-    }
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: params ? JSON.stringify(params) : undefined,
+            signal: controller.signal,
+          });
 
-    return data.result as T;
+          const data = (await response.json()) as TelegramResponse<T>;
+
+          if (!data.ok) {
+            const error = new Error(
+              `Telegram API error: ${data.error_code} - ${data.description || 'Unknown error'}`
+            );
+            (error as Error & { code?: number }).code = data.error_code;
+            throw error;
+          }
+
+          return data.result as T;
+        } catch (error) {
+          if ((error as Error).name === 'AbortError') {
+            throw new Error(`Request timed out after ${this.config.timeoutMs}ms`);
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      },
+      {
+        maxRetries: this.config.maxRetries,
+        initialDelayMs: this.config.retryDelayMs,
+        retryOn: isRetryableError,
+        onRetry: (attempt, error, delayMs) => {
+          console.error(`Telegram API retry ${attempt}/${this.config.maxRetries} after ${delayMs}ms: ${error.message}`);
+        },
+      }
+    );
   }
 
   /**
@@ -106,11 +165,49 @@ class TelegramClient {
       parse_mode?: 'Markdown' | 'MarkdownV2' | 'HTML';
       disable_notification?: boolean;
       reply_to_message_id?: number;
+      reply_markup?: InlineKeyboardMarkup;
     }
   ): Promise<TelegramMessage> {
     return this.request<TelegramMessage>('sendMessage', {
       chat_id: chatId,
       text,
+      ...options,
+    });
+  }
+
+  /**
+   * Edit a message text
+   */
+  async editMessageText(
+    chatId: number | string,
+    messageId: number,
+    text: string,
+    options?: {
+      parse_mode?: 'Markdown' | 'MarkdownV2' | 'HTML';
+      reply_markup?: InlineKeyboardMarkup;
+    }
+  ): Promise<TelegramMessage | boolean> {
+    return this.request<TelegramMessage | boolean>('editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      ...options,
+    });
+  }
+
+  /**
+   * Answer a callback query
+   */
+  async answerCallbackQuery(
+    callbackQueryId: string,
+    options?: {
+      text?: string;
+      show_alert?: boolean;
+      cache_time?: number;
+    }
+  ): Promise<boolean> {
+    return this.request<boolean>('answerCallbackQuery', {
+      callback_query_id: callbackQueryId,
       ...options,
     });
   }

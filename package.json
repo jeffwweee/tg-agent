@@ -10,7 +10,10 @@
     "start": "node dist/server/index.js",
     "start:dev": "tsx src/server/index.ts",
     "lint": "eslint src --ext .ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "telegram",
@@ -34,7 +37,8 @@
     "@types/node": "^22.10.7",
     "@types/node-cron": "^3.0.11",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.0"
   },
   "engines": {
     "node": ">=18.0.0"

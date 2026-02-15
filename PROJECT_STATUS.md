@@ -1,9 +1,9 @@
 # tg-agent Project Status
 
-**Last Updated**: 2026-02-14
+**Last Updated**: 2026-02-15
 **Version**: 0.1.0
 
-## Current Phase: Phase 2 Complete (MVP Working)
+## Current Phase: Production Ready 🚀
 
 ### Completed Phases
 
@@ -11,9 +11,10 @@
 |-------|-------------|--------|-----------------|
 | Phase 1 | Webhook + tmux injection | ✅ Complete | 2026-02-14 |
 | Phase 2 | Stop hook replies | ✅ Complete | 2026-02-14 |
-| Phase 3 | Formatting + typing indicator | 🔲 Pending | - |
+| Phase 3 | Formatting + typing indicator | ✅ Complete | 2026-02-15 |
 | Phase 4 | Scheduling | 🔲 Deferred | - |
-| Phase 5 | Hardening | 🔲 Pending | - |
+| Phase 5 | Hardening | ✅ Complete | 2026-02-15 |
+| Phase 6 | Production Prep | ✅ Complete | 2026-02-15 |
 
 ---
 
@@ -27,6 +28,14 @@
 - [x] Stop hook for async responses
 - [x] Transcript parsing (JSONL format)
 - [x] Text content extraction (filters thinking/tool_use)
+- [x] Markdown to Telegram conversion (bold, italic, code, links)
+
+### UX Features ✅
+- [x] Typing indicator (periodic until response)
+- [x] Message reactions (✍ acknowledgment)
+- [x] Code block formatting with language labels
+- [x] Long message chunking with continuation markers
+- [x] Code block truncation for very long code
 
 ### Commands ✅
 - [x] `/start` - Welcome message
@@ -41,6 +50,20 @@
 - [x] Cloudflared tunnel support
 - [x] Telegram Bot API integration
 - [x] Atomic file writes for state
+
+### Reliability ✅
+- [x] Retry logic with exponential backoff
+- [x] Request timeout handling (30s)
+- [x] Unit tests (Vitest, 48 tests)
+- [x] Detailed health check endpoint (/health/detailed)
+- [x] Inline keyboard support (for future use)
+- [x] Callback query support (for future use)
+
+### Production ✅
+- [x] Startup scripts (bin/start.sh)
+- [x] Webhook management (bin/webhook.sh)
+- [x] Deployment documentation
+- [x] API reference documentation
 
 ---
 
@@ -60,7 +83,6 @@
 - [ ] Add proper TypeScript types for transcript entries
 - [ ] Add unit tests
 - [ ] Add error handling for edge cases
-- [ ] Improve markdown formatting for Telegram
 - [ ] Add logging to hook script
 
 ---
@@ -92,17 +114,17 @@
 
 ## Next Steps
 
-1. **Phase 3**: Formatting improvements
-   - Better markdown conversion
-   - Typing indicator while Claude responds
-   - Message chunking for long responses
+1. **Future Enhancements**
+   - Tool approval from Telegram (user story ready)
+   - Cloudflared tunnel reconnection logic
+   - Logging improvements
 
-2. **Phase 5**: Hardening
-   - Error recovery
-   - Reconnection logic
-   - Health monitoring
-
-3. **Phase 4**: Scheduling (deferred per user request)
+2. **Phase 4**: Scheduling (deferred per user request)
    - node-cron integration
    - SQLite/JSON storage for schedules
    - Independent from Claude workflow
+
+3. **New Feature**: Tool Approval from Telegram
+   - See `docs/tg-agent/user-stories/tool-approval-from-telegram.md`
+   - Inline keyboard for approve/deny
+   - Callback query handling

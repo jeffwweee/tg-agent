@@ -1,16 +1,16 @@
 # tg-agent Task List
 
 **Sprint**: MVP Hardening
-**Last Updated**: 2026-02-14
+**Last Updated**: 2026-02-15
 
 ---
 
 ## Sprint Goals
 
-1. Improve message formatting for Telegram
-2. Add typing indicator support
-3. Error handling and recovery
-4. Prepare for production use
+1. ~~Improve message formatting for Telegram~~ ✅
+2. ~~Add typing indicator support~~ ✅
+3. ~~Error handling and recovery~~ ✅
+4. ~~Prepare for production use~~ ✅
 
 ---
 
@@ -24,26 +24,6 @@
 
 ## Pending (Prioritized)
 
-### Phase 3: Formatting & UX
-
-| # | Task | Effort | Priority | Dependencies |
-|---|------|--------|----------|--------------|
-| 1 | Improve markdown conversion (Claude → Telegram) | M | High | - |
-| 2 | Add typing indicator while Claude responds | S | Medium | - |
-| 3 | Better code block formatting | S | Medium | - |
-| 4 | Handle long messages (chunking) | M | Medium | - |
-
-### Phase 5: Hardening
-
-| # | Task | Effort | Priority | Dependencies |
-|---|------|--------|----------|--------------|
-| 5 | Add unit tests for core modules | L | High | - |
-| 6 | Error recovery for failed Telegram sends | M | High | - |
-| 7 | Cloudflared tunnel reconnection logic | M | Medium | - |
-| 8 | Health check endpoint improvements | S | Low | - |
-| 9 | Add request timeout handling | S | Medium | - |
-| 10 | Logging improvements | S | Low | - |
-
 ### Phase 4: Scheduling (Deferred)
 
 | # | Task | Effort | Priority | Dependencies |
@@ -52,6 +32,14 @@
 | 12 | Implement node-cron integration | M | Low | #11 |
 | 13 | Add schedule storage (SQLite/JSON) | M | Low | #11 |
 | 14 | Implement /schedule commands | L | Low | #12, #13 |
+
+### Future Features
+
+| Feature | Effort | Priority |
+|---------|--------|----------|
+| Tool approval from Telegram | L | Medium |
+| Cloudflared tunnel reconnection | M | Low |
+| Logging improvements | S | Low |
 
 ---
 
@@ -67,6 +55,16 @@
 
 | Task | Completed | Notes |
 |------|-----------|-------|
+| Production startup scripts | 2026-02-15 | bin/start.sh, bin/webhook.sh |
+| Documentation | 2026-02-15 | README, deployment guide, API reference |
+| Add unit tests for core modules | 2026-02-15 | Vitest setup, 48 tests for retry, client, markdown |
+| Error recovery for failed Telegram sends | 2026-02-15 | Retry with exponential backoff |
+| Add request timeout handling | 2026-02-15 | 30s timeout with AbortController |
+| Health check endpoint improvements | 2026-02-15 | Detailed /health/detailed with component checks |
+| Better code block formatting | 2026-02-15 | Language labels, truncation for long code |
+| Handle long messages (chunking) | 2026-02-15 | Continuation markers, percentage remaining |
+| Add typing indicator while Claude responds | 2026-02-15 | Periodic typing until response sent |
+| Improve markdown conversion (Claude → Telegram) | 2026-02-15 | Bold, italic, code, links, proper escaping |
 | Fix tmux Enter key | 2026-02-14 | Separate send-keys commands |
 | Fix Stop hook transcript reading | 2026-02-14 | Read from stdin JSON input |
 | Fix response timing | 2026-02-14 | Added 500ms delay |

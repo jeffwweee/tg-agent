@@ -12,6 +12,7 @@ import {
   verifyUser,
 } from '../../telegram/client.js';
 import { saveChatId, savePending, getPending, clearPending } from '../../state/files.js';
+import { startTypingIndicator } from '../../telegram/typing-indicator.js';
 import {
   injectPrompt,
   sendEscape,
@@ -164,10 +165,6 @@ export async function handleWebhook(
         return;
       }
 
-      // Send typing indicator
-      const client = getTelegramClient();
-      await client.sendChatAction(chat.id, 'typing');
-
       // Save pending state
       await savePending({
         chatId: chat.id,
@@ -177,10 +174,14 @@ export async function handleWebhook(
         text,
       });
 
+      // Start typing indicator (will continue until pending is cleared)
+      startTypingIndicator(chat.id);
+
       // Inject prompt to Claude
       await injectPrompt(text);
 
       // Acknowledge receipt
+      const client = getTelegramClient();
       await client.setMessageReaction(chat.id, message_id, '✍');
 
       log.info({ text: text.slice(0, 50) }, 'Message injected to Claude');

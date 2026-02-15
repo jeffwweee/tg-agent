@@ -2,10 +2,12 @@ import Fastify from 'fastify';
 import { config } from 'dotenv';
 import { z } from 'zod';
 import { registerTelegramRoutes } from './routes/telegram.js';
-import { setStateDir } from '../state/files.js';
+import { setStateDir, getPending } from '../state/files.js';
+import { getTelegramClient } from '../telegram/client.js';
+import { sessionExists, getSessionName } from '../tmux/inject.js';
 
-// Load environment variables
-config();
+// Load environment variables (override existing env vars with .env values)
+config({ override: true });
 
 // Environment schema validation
 const envSchema = z.object({
@@ -35,7 +37,7 @@ const fastify = Fastify({
   logger: process.env.LOG_PRETTY === 'true',
 });
 
-// Health check endpoint
+// Health check endpoint - basic
 fastify.get('/health', async () => {
   return {
     status: 'ok',
@@ -44,13 +46,68 @@ fastify.get('/health', async () => {
   };
 });
 
+// Health check endpoint - detailed
+fastify.get('/health/detailed', async (request) => {
+  const log = request.log;
+  const checks: Record<string, { status: 'ok' | 'error' | 'degraded'; details?: string }> = {};
+
+  // Check tmux session
+  try {
+    const tmuxOk = await sessionExists();
+    checks.tmux = {
+      status: tmuxOk ? 'ok' : 'error',
+      details: tmuxOk ? `Session "${getSessionName()}" running` : `Session "${getSessionName()}" not found`,
+    };
+  } catch (err) {
+    log.warn({ err }, 'Health check: tmux check failed');
+    checks.tmux = { status: 'error', details: (err as Error).message };
+  }
+
+  // Check Telegram API
+  try {
+    const client = getTelegramClient();
+    await client.getMe();
+    checks.telegram = { status: 'ok', details: 'API reachable' };
+  } catch (err) {
+    log.warn({ err }, 'Health check: Telegram check failed');
+    checks.telegram = { status: 'error', details: (err as Error).message };
+  }
+
+  // Check pending state
+  try {
+    const pending = await getPending();
+    checks.pending = {
+      status: 'ok',
+      details: pending ? `Message pending for ${Math.round((Date.now() - pending.timestamp) / 1000)}s` : 'No pending messages',
+    };
+  } catch (err) {
+    log.warn({ err }, 'Health check: pending check failed');
+    checks.pending = { status: 'error', details: (err as Error).message };
+  }
+
+  // Determine overall status
+  const hasError = Object.values(checks).some((c) => c.status === 'error');
+  const hasDegraded = Object.values(checks).some((c) => c.status === 'degraded');
+  const overallStatus = hasError ? 'error' : hasDegraded ? 'degraded' : 'ok';
+
+  return {
+    status: overallStatus,
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || '0.1.0',
+    uptime: process.uptime(),
+    checks,
+  };
+});
+
 // Root endpoint
 fastify.get('/', async () => {
   return {
     name: 'tg-agent',
     description: 'Telegram ↔ Claude Code Bridge',
+    version: process.env.npm_package_version || '0.1.0',
     endpoints: {
       health: '/health',
+      healthDetailed: '/health/detailed',
       webhook: '/telegram/webhook',
     },
   };

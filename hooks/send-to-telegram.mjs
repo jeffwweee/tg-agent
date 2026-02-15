@@ -12,15 +12,37 @@
 
 import { readFile, writeFile, unlink, mkdir, rename } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join, basename } from 'path';
+import { join, basename, dirname } from 'path';
 import { homedir, tmpdir } from 'os';
+import { fileURLToPath } from 'url';
+
+// Get the directory of this script for finding .env
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PROJECT_ROOT = join(__dirname, '..');
+
+// Read token from .env file (preferred over environment variable)
+async function getTokenFromEnv() {
+  const envPath = join(PROJECT_ROOT, '.env');
+  if (existsSync(envPath)) {
+    const content = await readFile(envPath, 'utf-8');
+    const match = content.match(/^TELEGRAM_BOT_TOKEN=(.+)$/m);
+    if (match) {
+      return match[1].trim();
+    }
+  }
+  // Fallback to environment variable
+  return process.env.TELEGRAM_BOT_TOKEN;
+}
 
 // Configuration
 const STATE_DIR = process.env.STATE_DIR || join(homedir(), '.claude');
 const TELEGRAM_CHAT_ID_FILE = join(STATE_DIR, 'telegram_chat_id');
 const TELEGRAM_PENDING_FILE = join(STATE_DIR, 'telegram_pending');
 const PENDING_TIMEOUT_MS = parseInt(process.env.PENDING_TIMEOUT_MS || '600000', 10);
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+
+// Token will be loaded asynchronously
+let TELEGRAM_BOT_TOKEN = null;
 
 /**
  * Atomic file write
@@ -90,23 +112,172 @@ async function getChatId() {
 }
 
 /**
- * Escape text for Telegram MarkdownV2
+ * Characters that need escaping in Telegram MarkdownV2
  */
-function escapeMarkdown(text) {
-  return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+const TELEGRAM_ESCAPE_CHARS = /[_*[\]()~`>#+=|{}.!-]/g;
+
+/**
+ * Escape special characters for Telegram MarkdownV2
+ */
+function escapeTelegram(text) {
+  return text.replace(TELEGRAM_ESCAPE_CHARS, '\\$&');
+}
+
+/**
+ * Escape only backticks and backslashes for inline code
+ */
+function escapeInlineCode(text) {
+  return text.replace(/[`\\]/g, '\\$&');
+}
+
+/**
+ * Maximum length for code blocks before truncation
+ */
+const MAX_CODE_BLOCK_LENGTH = 3500;
+
+/**
+ * Parse markdown and convert to Telegram MarkdownV2 format
+ */
+function markdownToTelegram(markdown) {
+  if (!markdown) return '';
+
+  let result = '';
+  let i = 0;
+
+  while (i < markdown.length) {
+    // Code block (triple backtick)
+    if (markdown.slice(i, i + 3) === '```') {
+      const endIndex = markdown.indexOf('```', i + 3);
+      if (endIndex !== -1) {
+        const codeContent = markdown.slice(i + 3, endIndex);
+        // Extract language identifier if present
+        const firstNewline = codeContent.indexOf('\n');
+        const language = firstNewline !== -1 ? codeContent.slice(0, firstNewline).trim() : '';
+        const code = firstNewline !== -1 ? codeContent.slice(firstNewline + 1) : codeContent;
+
+        // Build code block with optional language label
+        let codeBlock = '```\n';
+        if (language) {
+          codeBlock += `// ${language}\n`;
+        }
+
+        // Truncate very long code blocks
+        if (code.length > MAX_CODE_BLOCK_LENGTH) {
+          const truncated = code.slice(0, MAX_CODE_BLOCK_LENGTH);
+          const lines = truncated.split('\n');
+          // Remove last potentially incomplete line
+          if (lines.length > 1) {
+            lines.pop();
+          }
+          codeBlock += lines.join('\n');
+          codeBlock += '\n\n// ... (truncated, see terminal for full code)';
+        } else {
+          codeBlock += code;
+        }
+
+        codeBlock += '\n```';
+        result += codeBlock;
+        i = endIndex + 3;
+        continue;
+      }
+    }
+
+    // Inline code (single backtick) - not at start of code block
+    if (markdown[i] === '`' && markdown.slice(i, i + 3) !== '```') {
+      const endIndex = markdown.indexOf('`', i + 1);
+      if (endIndex !== -1 && endIndex !== i + 1) {
+        const code = markdown.slice(i + 1, endIndex);
+        // Don't include newlines in inline code
+        if (!code.includes('\n')) {
+          result += '`' + escapeInlineCode(code) + '`';
+          i = endIndex + 1;
+          continue;
+        }
+      }
+    }
+
+    // Link [text](url)
+    if (markdown[i] === '[') {
+      const textEnd = markdown.indexOf(']', i);
+      if (textEnd !== -1 && markdown[textEnd + 1] === '(') {
+        const urlEnd = markdown.indexOf(')', textEnd + 2);
+        if (urlEnd !== -1) {
+          const linkText = markdown.slice(i + 1, textEnd);
+          const url = markdown.slice(textEnd + 2, urlEnd);
+          result += '[' + escapeTelegram(linkText) + '](' + url + ')';
+          i = urlEnd + 1;
+          continue;
+        }
+      }
+    }
+
+    // Bold (**text**)
+    if (markdown.slice(i, i + 2) === '**') {
+      const endIndex = markdown.indexOf('**', i + 2);
+      if (endIndex !== -1) {
+        const boldText = markdown.slice(i + 2, endIndex);
+        result += '*' + escapeTelegram(boldText) + '*';
+        i = endIndex + 2;
+        continue;
+      }
+    }
+
+    // Bold (__text__)
+    if (markdown.slice(i, i + 2) === '__') {
+      const endIndex = markdown.indexOf('__', i + 2);
+      if (endIndex !== -1) {
+        const boldText = markdown.slice(i + 2, endIndex);
+        result += '*' + escapeTelegram(boldText) + '*';
+        i = endIndex + 2;
+        continue;
+      }
+    }
+
+    // Italic (*text* or _text_) - single only
+    if ((markdown[i] === '*' || markdown[i] === '_') &&
+        markdown[i + 1] !== '*' && markdown[i + 1] !== '_') {
+      const char = markdown[i];
+      const endIndex = markdown.indexOf(char, i + 1);
+      if (endIndex !== -1 && !markdown.slice(i + 1, endIndex).includes('\n')) {
+        const italicText = markdown.slice(i + 1, endIndex);
+        result += '_' + escapeTelegram(italicText) + '_';
+        i = endIndex + 1;
+        continue;
+      }
+    }
+
+    // Regular character - escape if needed
+    result += escapeTelegram(markdown[i]);
+    i++;
+  }
+
+  return result;
 }
 
 /**
  * Format message for Telegram
  */
 function formatMessage(text) {
-  // For now, just escape the text
-  // TODO: Better markdown conversion from Claude's format
-  return escapeMarkdown(text);
+  return markdownToTelegram(text);
+}
+
+/**
+ * Count occurrences of a substring
+ */
+function countOccurrences(str, substr) {
+  let count = 0;
+  let pos = 0;
+  while ((pos = str.indexOf(substr, pos)) !== -1) {
+    count++;
+    pos += substr.length;
+  }
+  return count;
 }
 
 /**
  * Split message into chunks (Telegram limit: 4096 chars)
+ * Tries to break at sensible points without breaking code blocks
+ * Adds continuation markers for multi-part messages
  */
 function chunkMessage(text, maxLength = 4000) {
   if (text.length <= maxLength) {
@@ -115,24 +286,66 @@ function chunkMessage(text, maxLength = 4000) {
 
   const chunks = [];
   let remaining = text;
+  const totalLength = text.length;
+  let processedLength = 0;
 
   while (remaining.length > 0) {
-    // Try to find a good break point
-    let breakPoint = maxLength;
+    if (remaining.length <= maxLength) {
+      // Last chunk - add continuation footer if there were previous chunks
+      if (chunks.length > 0) {
+        chunks.push('─────────\n' + remaining);
+      } else {
+        chunks.push(remaining);
+      }
+      break;
+    }
 
-    // Look for paragraph break
-    const paragraphBreak = remaining.lastIndexOf('\n\n', maxLength);
-    if (paragraphBreak > maxLength / 2) {
-      breakPoint = paragraphBreak + 2;
+    let breakPoint = maxLength;
+    let isInsideCodeBlock = false;
+
+    // Check if we're inside a code block at the maxLength position
+    const codeBlockCount = countOccurrences(remaining.slice(0, maxLength), '```');
+    if (codeBlockCount % 2 === 1) {
+      isInsideCodeBlock = true;
+      // We're inside a code block - find where it ends
+      const codeBlockEnd = remaining.indexOf('```', maxLength);
+      if (codeBlockEnd !== -1 && codeBlockEnd < maxLength + 2000) {
+        breakPoint = codeBlockEnd + 3;
+      }
     } else {
-      // Look for line break
-      const lineBreak = remaining.lastIndexOf('\n', maxLength);
-      if (lineBreak > maxLength / 2) {
-        breakPoint = lineBreak + 1;
+      // Look for paragraph break first
+      const paragraphBreak = remaining.lastIndexOf('\n\n', maxLength);
+      if (paragraphBreak > maxLength / 2) {
+        breakPoint = paragraphBreak + 2;
+      } else {
+        // Look for line break
+        const lineBreak = remaining.lastIndexOf('\n', maxLength);
+        if (lineBreak > maxLength / 2) {
+          breakPoint = lineBreak + 1;
+        }
       }
     }
 
-    chunks.push(remaining.slice(0, breakPoint));
+    let chunk = remaining.slice(0, breakPoint);
+    processedLength += breakPoint;
+
+    // Add continuation marker
+    if (chunks.length === 0) {
+      // First chunk - add "continued" indicator at the end
+      chunk += '\n\n_\\.\\.\\. continued_';
+    } else {
+      // Middle chunk - add header and footer
+      const remainingPercent = Math.round((remaining.length - breakPoint) / totalLength * 100);
+      chunk = `_\\.\\.\\. continued \\(${remainingPercent}% remaining\\)_\n─────────\n` + chunk;
+      if (remaining.length > breakPoint) {
+        chunk += '\n\n_\\.\\.\\. continued_';
+      }
+    }
+
+    // Account for continuation markers in length calculation
+    // (they're added after we've already determined the break point)
+
+    chunks.push(chunk);
     remaining = remaining.slice(breakPoint);
   }
 
@@ -256,17 +469,32 @@ function expandPath(filePath) {
  * Main entry point
  */
 async function main() {
+  const log = (msg) => {
+    const timestamp = new Date().toISOString();
+    console.error(`[${timestamp}] ${msg}`);
+  };
+
+  log('Stop hook triggered');
+
+  // Load token from .env file first
+  TELEGRAM_BOT_TOKEN = await getTokenFromEnv();
+  if (!TELEGRAM_BOT_TOKEN) {
+    log('ERROR: TELEGRAM_BOT_TOKEN not found in .env or environment');
+    process.exit(1);
+  }
+
   // Check for pending message
   const pending = await checkPending();
   if (!pending) {
-    console.log('No pending message to respond to');
+    log('No pending message to respond to');
     return;
   }
+  log(`Found pending message from chat ${pending.chatId}`);
 
   // Get chat ID
   const chatId = await getChatId();
   if (!chatId) {
-    console.error('No chat ID available');
+    log('ERROR: No chat ID available');
     return;
   }
 
@@ -278,11 +506,12 @@ async function main() {
       stdin.push(chunk);
     }
     const input = Buffer.concat(stdin).toString('utf-8');
+    log(`Received stdin (${input.length} bytes): ${input.slice(0, 200)}...`);
     if (input) {
       hookInput = JSON.parse(input);
     }
   } catch (err) {
-    console.error('Failed to parse stdin:', err);
+    log(`ERROR: Failed to parse stdin: ${err.message}`);
   }
 
   // Read transcript from the path provided in hook input
@@ -290,40 +519,45 @@ async function main() {
 
   if (hookInput?.transcript_path) {
     const transcriptPath = expandPath(hookInput.transcript_path);
-    console.error('Reading transcript from:', transcriptPath);
+    log(`Reading transcript from: ${transcriptPath}`);
 
     // Wait a bit for the transcript to be flushed to disk
     await new Promise(resolve => setTimeout(resolve, 500));
 
     transcriptContent = await safeRead(transcriptPath);
     if (!transcriptContent) {
-      console.error('Failed to read transcript file:', transcriptPath);
+      log(`ERROR: Failed to read transcript file: ${transcriptPath}`);
+    } else {
+      log(`Transcript size: ${transcriptContent.length} bytes`);
     }
   } else {
-    console.error('No transcript_path in hook input');
+    log('ERROR: No transcript_path in hook input');
   }
 
   // Extract message
   let message;
   if (transcriptContent) {
     message = extractAssistantMessage(transcriptContent);
+    log(`Extracted message length: ${message?.length || 0}`);
   }
 
   if (!message) {
     // Fallback: send acknowledgment
     message = '✅ Done';
+    log('Using fallback message');
   }
 
   // Format and send
   const formattedMessage = formatMessage(message);
+  log(`Sending message (${formattedMessage.length} chars)...`);
   const success = await sendToTelegram(chatId, formattedMessage);
 
   // Clear pending state on success
   if (success) {
     await clearPending();
-    console.log('Response sent to Telegram');
+    log('Response sent to Telegram successfully');
   } else {
-    console.error('Failed to send response');
+    log('ERROR: Failed to send response');
     process.exit(1);
   }
 }
