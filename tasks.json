@@ -1,0 +1,236 @@
+{
+  "project": "tg-agent",
+  "last_updated": "2026-02-15T16:45:00Z",
+  "current_focus": null,
+  "features": [
+    {
+      "id": "FEAT-001",
+      "category": "core",
+      "priority": "P0",
+      "description": "Telegram webhook endpoint receives and validates messages",
+      "steps": [
+        "Send POST request to /telegram/webhook",
+        "Verify request is validated against allowed users",
+        "Verify message is processed or rejected appropriately"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T15:00:00Z",
+      "verified_by": "manual testing + npm test",
+      "notes": "Core webhook functionality complete"
+    },
+    {
+      "id": "FEAT-002",
+      "category": "core",
+      "priority": "P0",
+      "description": "User can send message to Claude via Telegram and receive response",
+      "steps": [
+        "Send text message to bot on Telegram",
+        "Verify message is injected into tmux Claude session",
+        "Verify Claude response is sent back to Telegram",
+        "Verify markdown formatting is preserved"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T15:00:00Z",
+      "verified_by": "end-to-end manual testing",
+      "notes": "Core message flow working"
+    },
+    {
+      "id": "FEAT-003",
+      "category": "ux",
+      "priority": "P0",
+      "description": "Typing indicator shows while Claude is processing",
+      "steps": [
+        "Send message to bot",
+        "Verify typing indicator appears",
+        "Verify typing indicator continues until response sent",
+        "Verify typing indicator stops when response arrives"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T14:00:00Z",
+      "verified_by": "manual testing",
+      "notes": "Periodic typing indicator implemented"
+    },
+    {
+      "id": "FEAT-004",
+      "category": "ux",
+      "priority": "P1",
+      "description": "Long messages are chunked with continuation markers",
+      "steps": [
+        "Send message that triggers long Claude response (>4096 chars)",
+        "Verify message is split into chunks",
+        "Verify continuation markers show percentage remaining",
+        "Verify all chunks are received in order"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T14:30:00Z",
+      "verified_by": "manual testing with long responses",
+      "notes": "Chunking with percentage markers working"
+    },
+    {
+      "id": "FEAT-005",
+      "category": "ux",
+      "priority": "P1",
+      "description": "Code blocks are formatted with language labels",
+      "steps": [
+        "Send message that triggers code response",
+        "Verify code block has language label",
+        "Verify long code blocks are truncatedated with notice",
+        "Verify markdown code formatting is correct"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T14:00:00Z",
+      "verified_by": "manual testing",
+      "notes": "Code formatting with truncation implemented"
+    },
+    {
+      "id": "FEAT-006",
+      "category": "reliability",
+      "priority": "P0",
+      "description": "Failed Telegram sends retry with exponential backoff",
+      "steps": [
+        "Simulate Telegram API failure",
+        "Verify retry is attempted",
+        "Verify backoff delay increases between retries",
+        "Verify eventual success or failure notification"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T12:00:00Z",
+      "verified_by": "unit tests (retry.test.ts)",
+      "notes": "48 unit tests passing including retry logic"
+    },
+    {
+      "id": "FEAT-007",
+      "category": "reliability",
+      "priority": "P1",
+      "description": "Request timeout handling prevents hanging",
+      "steps": [
+        "Send request that would hang",
+        "Verify 30s timeout triggers",
+        "Verify proper error handling",
+        "Verify server remains responsive"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T12:00:00Z",
+      "verified_by": "unit tests + manual timeout testing",
+      "notes": "AbortController with 30s timeout"
+    },
+    {
+      "id": "FEAT-008",
+      "category": "core",
+      "priority": "P0",
+      "description": "Bot commands work correctly (/start, /help, /clear, /stop, /status)",
+      "steps": [
+        "Send /start command, verify welcome message",
+        "Send /help command, verify command list",
+        "Send /clear command, verify Claude screen cleared",
+        "Send /stop command, verify operation cancelled",
+        "Send /status command, verify bridge status returned"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T15:00:00Z",
+      "verified_by": "manual testing all commands",
+      "notes": "All commands implemented and working"
+    },
+    {
+      "id": "FEAT-009",
+      "category": "core",
+      "priority": "P0",
+      "description": "Tool approval from Telegram with inline keyboard",
+      "steps": [
+        "Trigger Claude tool use requiring approval",
+        "Verify approve/deny buttons appear in Telegram",
+        "Tap approve, verify tool executes",
+        "Tap deny, verify tool is rejected"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T15:00:00Z",
+      "verified_by": "manual testing with tool approval flow",
+      "notes": "Inline keyboard with callback queries working"
+    },
+    {
+      "id": "FEAT-010",
+      "category": "infra",
+      "priority": "P1",
+      "description": "Health check endpoints provide detailed status",
+      "steps": [
+        "GET /health returns basic status",
+        "GET /health/detailed returns component status",
+        "Verify all components report status",
+        "Verify response time is acceptable"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-15T12:00:00Z",
+      "verified_by": "curl tests",
+      "notes": "Basic and detailed health endpoints"
+    },
+    {
+      "id": "FEAT-011",
+      "category": "core",
+      "priority": "P2",
+      "description": "Send pictures to Claude for analysis",
+      "steps": [
+        "Send photo to bot",
+        "Verify photo is received and processed",
+        "Verify photo is sent to Claude with Vision",
+        "Verify Claude's analysis is returned"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "verified_by": null,
+      "notes": "Future feature - user story ready"
+    },
+    {
+      "id": "FEAT-012",
+      "category": "infra",
+      "priority": "P3",
+      "description": "Cloudflared tunnel automatic reconnection",
+      "steps": [
+        "Start tunnel with cloudflared",
+        "Simulate tunnel disconnection",
+        "Verify automatic reconnection",
+        "Verify webhook remains functional"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "verified_by": null,
+      "notes": "Low priority - manual restart acceptable"
+    },
+    {
+      "id": "FEAT-013",
+      "category": "infra",
+      "priority": "P3",
+      "description": "Scheduled messages via node-cron",
+      "steps": [
+        "Create schedule with /schedule command",
+        "Verify schedule is stored",
+        "Verify message sent at scheduled time",
+        "Verify schedule can be cancelled"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "verified_by": null,
+      "notes": "Phase 4 - deferred per user request"
+    },
+    {
+      "id": "FEAT-014",
+      "category": "reliability",
+      "priority": "P3",
+      "description": "Improved logging with structured output",
+      "steps": [
+        "Verify logs include timestamps",
+        "Verify logs include context (chat_id, message_id)",
+        "Verify log levels work correctly",
+        "Verify logs can be filtered"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "verified_by": null,
+      "notes": "Low priority enhancement"
+    }
+  ],
+  "metrics": {
+    "total": 14,
+    "passing": 10,
+    "failing": 4
+  }
+}
