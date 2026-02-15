@@ -308,12 +308,14 @@ export async function handleWebhook(
 
       // Acknowledge receipt
       const client = getTelegramClient();
-      await client.setMessageReaction(chat.id, message_id, '📷');
+      await client.setMessageReaction(chat.id, message_id, '👀');
 
       log.info({ path: savedPhoto.filePath }, 'Photo message injected to Claude');
     } catch (err) {
       log.error({ err }, 'Failed to process photo');
-      await sendReply(chat.id, `❌ Failed to process photo: ${(err as Error).message}`);
+      // Don't use markdown for error messages to avoid parsing issues
+      const client = getTelegramClient();
+      await client.sendMessage(chat.id, `Failed to process photo: ${(err as Error).message}`);
     }
 
     reply.code(200).send({ ok: true });

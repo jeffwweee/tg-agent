@@ -119,12 +119,12 @@ export function getLargestPhoto(photos: TelegramPhotoSize[]): TelegramPhotoSize 
  * Format a message for Claude about the received photo
  */
 export function formatPhotoMessageForClaude(savedPhoto: SavedPhoto, caption?: string): string {
-  let message = `User sent an image. The image is saved at: ${savedPhoto.filePath}\n\n`;
-  message += `Image details: ${savedPhoto.width}x${savedPhoto.height} pixels, ${Math.round(savedPhoto.fileSize / 1024)}KB\n\n`;
+  let message = `User sent an image saved at: ${savedPhoto.filePath}. `;
+  message += `Size: ${savedPhoto.width}x${savedPhoto.height}, ${Math.round(savedPhoto.fileSize / 1024)}KB. `;
   message += 'Please analyze this image.';
 
   if (caption) {
-    message += `\n\nUser's caption: ${caption}`;
+    message += ` Caption: ${caption}`;
   }
 
   return message;
