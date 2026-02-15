@@ -29,6 +29,14 @@ export interface TelegramChat {
   last_name?: string;
 }
 
+export interface TelegramPhotoSize {
+  file_id: string;
+  file_unique_id: string;
+  width: number;
+  height: number;
+  file_size?: number;
+}
+
 export interface TelegramMessage {
   message_id: number;
   from?: TelegramUser;
@@ -37,6 +45,8 @@ export interface TelegramMessage {
   chat: TelegramChat;
   text?: string;
   entities?: TelegramEntity[];
+  photo?: TelegramPhotoSize[];
+  caption?: string;
 }
 
 export interface TelegramEntity {
@@ -294,6 +304,38 @@ class TelegramClient {
    */
   async deleteMyCommands(): Promise<boolean> {
     return this.request<boolean>('deleteMyCommands');
+  }
+
+  /**
+   * Get file info from Telegram
+   */
+  async getFile(fileId: string): Promise<{ file_id: string; file_unique_id: string; file_size?: number; file_path?: string }> {
+    return this.request('getFile', { file_id: fileId });
+  }
+
+  /**
+   * Download file from Telegram servers
+   */
+  async downloadFile(filePath: string): Promise<Buffer> {
+    const url = `https://api.telegram.org/file/bot${this.token}/${filePath}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.config.timeoutMs);
+
+    try {
+      const response = await fetch(url, { signal: controller.signal });
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+      }
+      return Buffer.from(await response.arrayBuffer());
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        throw new Error(`File download timed out after ${this.config.timeoutMs}ms`);
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 }
 
