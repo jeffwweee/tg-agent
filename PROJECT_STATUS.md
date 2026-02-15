@@ -56,14 +56,22 @@
 - [x] Request timeout handling (30s)
 - [x] Unit tests (Vitest, 48 tests)
 - [x] Detailed health check endpoint (/health/detailed)
-- [x] Inline keyboard support (for future use)
-- [x] Callback query support (for future use)
+- [x] Inline keyboard support
+- [x] Callback query support
+
+### Tool Approval ✅
+- [x] Permission request state management
+- [x] Inline keyboard approve/deny buttons
+- [x] Callback query handling
+- [x] Permission polling with timeout
+- [x] Automatic cleanup of expired requests
 
 ### Production ✅
 - [x] Startup scripts (bin/start.sh)
 - [x] Webhook management (bin/webhook.sh)
 - [x] Deployment documentation
 - [x] API reference documentation
+- [x] Bot commands sync (bin/commands.sh)
 
 ---
 
@@ -115,7 +123,7 @@
 ## Next Steps
 
 1. **Future Enhancements**
-   - Tool approval from Telegram (user story ready)
+   - Send pictures to Claude (user story ready)
    - Cloudflared tunnel reconnection logic
    - Logging improvements
 
@@ -123,8 +131,3 @@
    - node-cron integration
    - SQLite/JSON storage for schedules
    - Independent from Claude workflow
-
-3. **New Feature**: Tool Approval from Telegram
-   - See `docs/tg-agent/user-stories/tool-approval-from-telegram.md`
-   - Inline keyboard for approve/deny
-   - Callback query handling

@@ -274,6 +274,27 @@ class TelegramClient {
   }> {
     return this.request('getWebhookInfo');
   }
+
+  /**
+   * Set bot commands
+   */
+  async setMyCommands(commands: Array<{ command: string; description: string }>): Promise<boolean> {
+    return this.request<boolean>('setMyCommands', { commands });
+  }
+
+  /**
+   * Get bot commands
+   */
+  async getMyCommands(): Promise<Array<{ command: string; description: string }>> {
+    return this.request<Array<{ command: string; description: string }>>('getMyCommands');
+  }
+
+  /**
+   * Delete bot commands
+   */
+  async deleteMyCommands(): Promise<boolean> {
+    return this.request<boolean>('deleteMyCommands');
+  }
 }
 
 // Singleton instance
