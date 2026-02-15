@@ -12,7 +12,7 @@ import {
   verifyUser,
 } from '../../telegram/client.js';
 import { saveChatId, savePending, getPending, clearPending } from '../../state/files.js';
-import { startTypingIndicator } from '../../telegram/typing-indicator.js';
+import { startTypingIndicator, stopAllTypingIndicators } from '../../telegram/typing-indicator.js';
 import {
   injectPrompt,
   sendEscape,
@@ -20,6 +20,9 @@ import {
   getSessionInfo,
   sessionExists,
 } from '../../tmux/inject.js';
+
+// Default workspace path
+const DEFAULT_WORKSPACE = process.env.DEFAULT_WORKSPACE || process.env.HOME + '/jef/projects/dev-workspace';
 
 // Command prefix
 const COMMAND_PREFIX = '/';
@@ -40,6 +43,7 @@ const commands: Record<string, CommandHandler> = {
     await reply(`*Claude Code Bridge Commands*\n\n` +
       `Just send a message to pass it to Claude.\n\n` +
       `*Commands:*\n` +
+      `/reset - Clear context and return to workspace\n` +
       `/clear - Clear Claude's screen\n` +
       `/stop - Cancel current operation\n` +
       `/status - Check bridge status\n` +
@@ -63,6 +67,35 @@ const commands: Record<string, CommandHandler> = {
     await sendEscape();
     await clearPending();
     await reply('⏹️ Stopped');
+  },
+
+  reset: async (_message, reply) => {
+    if (!(await sessionExists())) {
+      await reply('⚠️ tmux session not running');
+      return;
+    }
+
+    // Stop any active typing indicators
+    stopAllTypingIndicators();
+
+    // Clear pending state
+    await clearPending();
+
+    // Cancel any current operation
+    await sendEscape();
+
+    // Small delay to ensure escape is processed
+    await new Promise(resolve => setTimeout(resolve, 100));
+
+    // Send /reset command to Claude
+    await injectPrompt('/reset');
+
+    // Send confirmation
+    const workspaceDisplay = DEFAULT_WORKSPACE.replace(process.env.HOME || '', '~');
+    await reply(`🔄 *Resetting context...*\n\n` +
+      `Context cleared ✓\n` +
+      `Workspace: \`${workspaceDisplay}\`\n\n` +
+      `Ready for new tasks!`);
   },
 
   status: async (_message, reply) => {

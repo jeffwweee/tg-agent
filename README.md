@@ -73,6 +73,7 @@ Add to `~/.claude/settings.json`:
 | Command | Action |
 |---------|--------|
 | `message` | Send message to Claude |
+| `/reset` | Clear context and return to workspace |
 | `/clear` | Clear Claude screen |
 | `/stop` | Cancel current operation |
 | `/status` | Check bridge status |

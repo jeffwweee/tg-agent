@@ -17,6 +17,7 @@ const envSchema = z.object({
   TELEGRAM_ALLOWED_USERS: z.string().default(''),
   TMUX_SESSION_NAME: z.string().default('claude'),
   STATE_DIR: z.string().optional(),
+  DEFAULT_WORKSPACE: z.string().optional(),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   LOG_PRETTY: z.string().transform((val) => val === 'true').default('true'),
   PENDING_TIMEOUT_MS: z.string().transform((val) => parseInt(val, 10)).default('600000'),

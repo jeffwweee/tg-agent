@@ -88,6 +88,7 @@ Telegram webhook endpoint. Receives updates from Telegram.
 |---------|-------------|
 | `/start` | Show welcome message |
 | `/help` | Show available commands |
+| `/reset` | Clear context and return to workspace |
 | `/clear` | Clear Claude screen |
 | `/stop` | Cancel current operation |
 | `/status` | Check bridge status |
@@ -156,6 +157,22 @@ Cancel the current Claude operation.
 **Response:**
 ```
 ⏹️ Stopped
+```
+
+---
+
+### `/reset`
+
+Clear Claude's context and return to default workspace.
+
+**Response:**
+```
+🔄 *Resetting context...*
+
+Context cleared ✓
+Workspace: `~/jef/projects/dev-workspace`
+
+Ready for new tasks!
 ```
 
 ---
