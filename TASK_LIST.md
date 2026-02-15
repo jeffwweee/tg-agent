@@ -37,7 +37,7 @@
 
 | Feature | Effort | Priority |
 |---------|--------|----------|
-| Tool approval from Telegram | L | Medium |
+| Send pictures to Claude | M | Medium |
 | Cloudflared tunnel reconnection | M | Low |
 | Logging improvements | S | Low |
 
@@ -55,6 +55,8 @@
 
 | Task | Completed | Notes |
 |------|-----------|-------|
+| Tool approval from Telegram | 2026-02-15 | Inline keyboard approve/deny, permission state management |
+| Preload Telegram commands | 2026-02-15 | bin/commands.sh, scripts/sync-commands.mjs, src/config/commands.ts |
 | Production startup scripts | 2026-02-15 | bin/start.sh, bin/webhook.sh |
 | Documentation | 2026-02-15 | README, deployment guide, API reference |
 | Add unit tests for core modules | 2026-02-15 | Vitest setup, 48 tests for retry, client, markdown |

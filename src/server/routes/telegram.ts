@@ -12,6 +12,7 @@ import {
   verifyUser,
 } from '../../telegram/client.js';
 import { saveChatId, savePending, getPending, clearPending } from '../../state/files.js';
+import { savePhoto, getLargestPhoto, formatPhotoMessageForClaude } from '../../telegram/photo.js';
 import {
   getPermissionRequest,
   updatePermissionRequest,
@@ -268,6 +269,58 @@ export async function handleWebhook(
 
   // Save chat ID for responses
   await saveChatId(chat.id);
+
+  // Handle photo messages
+  if (message.photo && message.photo.length > 0) {
+    try {
+      // Check tmux session
+      if (!(await sessionExists())) {
+        await sendReply(chat.id, '⚠️ Claude session not running. Start tmux with Claude first.');
+        reply.code(200).send({ ok: true });
+        return;
+      }
+
+      // Get the largest photo
+      const largestPhoto = getLargestPhoto(message.photo);
+      log.info({ fileId: largestPhoto.file_id, size: largestPhoto.file_size }, 'Received photo');
+
+      // Download and save the photo
+      const savedPhoto = await savePhoto(largestPhoto);
+      log.info({ path: savedPhoto.filePath }, 'Photo saved');
+
+      // Format message for Claude
+      const promptText = formatPhotoMessageForClaude(savedPhoto, message.caption);
+
+      // Save pending state
+      await savePending({
+        chatId: chat.id,
+        userId: from?.id || 0,
+        messageId: message_id,
+        timestamp: Date.now(),
+        text: promptText,
+      });
+
+      // Start typing indicator
+      startTypingIndicator(chat.id);
+
+      // Inject prompt to Claude
+      await injectPrompt(promptText);
+
+      // Acknowledge receipt
+      const client = getTelegramClient();
+      await client.setMessageReaction(chat.id, message_id, '👀');
+
+      log.info({ path: savedPhoto.filePath }, 'Photo message injected to Claude');
+    } catch (err) {
+      log.error({ err }, 'Failed to process photo');
+      // Don't use markdown for error messages to avoid parsing issues
+      const client = getTelegramClient();
+      await client.sendMessage(chat.id, `Failed to process photo: ${(err as Error).message}`);
+    }
+
+    reply.code(200).send({ ok: true });
+    return;
+  }
 
   // Handle commands
   if (text && text.startsWith(COMMAND_PREFIX)) {
