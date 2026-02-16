@@ -2,9 +2,14 @@ import Fastify from 'fastify';
 import { config } from 'dotenv';
 import { z } from 'zod';
 import { registerTelegramRoutes } from './routes/telegram.js';
-import { setStateDir, getPending } from '../state/files.js';
+import { setStateDir, getPending, getChatId } from '../state/files.js';
 import { getTelegramClient } from '../telegram/client.js';
 import { sessionExists, getSessionName } from '../tmux/inject.js';
+import {
+  runStartupChecks,
+  formatHealthReportForLog,
+  formatHealthReportForTelegram,
+} from '../health/startup-checks.js';
 
 // Load environment variables (override existing env vars with .env values)
 config({ override: true });
@@ -21,6 +26,8 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   LOG_PRETTY: z.string().transform((val) => val === 'true').default('true'),
   PENDING_TIMEOUT_MS: z.string().transform((val) => parseInt(val, 10)).default('600000'),
+  NOTIFY_STARTUP: z.string().transform((val) => val === 'true').default('false'),
+  USE_TUNNEL: z.string().transform((val) => val === 'true').default('false'),
 });
 
 type Env = z.infer<typeof envSchema>;
@@ -117,6 +124,31 @@ fastify.get('/', async () => {
 // Register routes
 const start = async () => {
   try {
+    // Run startup health checks
+    const healthReport = await runStartupChecks();
+    fastify.log.info(formatHealthReportForLog(healthReport));
+
+    // Send Telegram notification if enabled
+    if (env.NOTIFY_STARTUP) {
+      try {
+        const chatId = await getChatId();
+        if (chatId) {
+          const client = getTelegramClient();
+          await client.sendMessage(chatId, formatHealthReportForTelegram(healthReport), {
+            parse_mode: 'Markdown',
+          });
+          fastify.log.info('Startup notification sent to Telegram');
+        }
+      } catch (err) {
+        fastify.log.warn({ err }, 'Failed to send startup notification');
+      }
+    }
+
+    // Check for critical errors and log warning
+    if (healthReport.criticalErrors > 0) {
+      fastify.log.warn('Starting in degraded mode due to critical errors');
+    }
+
     // Register Telegram routes
     await registerTelegramRoutes(fastify);
 

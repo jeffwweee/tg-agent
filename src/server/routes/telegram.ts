@@ -28,6 +28,7 @@ import {
   sendKeys,
   sendKey,
 } from '../../tmux/inject.js';
+import { runStartupChecks } from '../../health/startup-checks.js';
 
 // Default workspace path
 const DEFAULT_WORKSPACE = process.env.DEFAULT_WORKSPACE || process.env.HOME + '/jef/projects/dev-workspace';
@@ -55,6 +56,7 @@ const commands: Record<string, CommandHandler> = {
       `/clear - Clear Claude's screen\n` +
       `/stop - Cancel current operation\n` +
       `/status - Check bridge status\n` +
+      `/health - Run health checks on all services\n` +
       `/help - Show this help`);
   },
 
@@ -130,6 +132,26 @@ const commands: Record<string, CommandHandler> = {
     }
 
     await reply(status);
+  },
+
+  health: async (_message, reply) => {
+    const report = await runStartupChecks();
+
+    let text = '🔍 *Service Health*\n\n';
+
+    for (const result of report.results) {
+      const emoji = result.status === 'ok' ? '✅' : result.status === 'warning' ? '⚠️' : '❌';
+      text += `${emoji} *${result.name}*\n`;
+      text += `_${result.message}_\n\n`;
+    }
+
+    text += `*Summary:* ${report.passed}/${report.totalChecks} passed`;
+
+    if (report.criticalErrors > 0) {
+      text += `\n\n⚠️ *Running in degraded mode*`;
+    }
+
+    await reply(text);
   },
 };
 

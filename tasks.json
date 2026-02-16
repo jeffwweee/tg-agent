@@ -1,6 +1,6 @@
 {
   "project": "tg-agent",
-  "last_updated": "2026-02-15T16:45:00Z",
+  "last_updated": "2026-02-16T09:40:00Z",
   "current_focus": null,
   "features": [
     {
@@ -174,10 +174,10 @@
         "Verify photo is sent to Claude with Vision",
         "Verify Claude's analysis is returned"
       ],
-      "passes": false,
-      "verified_at": null,
-      "verified_by": null,
-      "notes": "Future feature - user story ready"
+      "passes": true,
+      "verified_at": "2026-02-16T08:35:00Z",
+      "verified_by": "git verification (commits 7ce2f1b, ede8281) + code review",
+      "notes": "Implemented via PR #2 - photo.ts, client.ts, telegram.ts webhook handler"
     },
     {
       "id": "FEAT-012",
@@ -226,11 +226,46 @@
       "verified_at": null,
       "verified_by": null,
       "notes": "Low priority enhancement"
+    },
+    {
+      "id": "FEAT-015",
+      "category": "reliability",
+      "priority": "P1",
+      "description": "Startup health hook verifies services are running",
+      "steps": [
+        "Start server and verify health checks run automatically",
+        "Verify tmux session is checked",
+        "Verify Telegram webhook is checked",
+        "Verify state directory is checked",
+        "Verify results are logged with clear status indicators",
+        "Verify optional Telegram notification on startup"
+      ],
+      "passes": true,
+      "verified_at": "2026-02-16T09:40:00Z",
+      "verified_by": "npm run typecheck + npm test (48 passing)",
+      "notes": "Implemented: src/health/startup-checks.ts, integrated into server startup"
+    },
+    {
+      "id": "FEAT-016",
+      "category": "core",
+      "priority": "P2",
+      "description": "Send files (PDF, TXT, CSV, etc.) to Claude for processing",
+      "steps": [
+        "Send PDF file to bot",
+        "Verify file is received and downloaded",
+        "Verify file is saved to workspace",
+        "Verify Claude can process the file",
+        "Verify Claude's response is returned"
+      ],
+      "passes": false,
+      "verified_at": null,
+      "verified_by": null,
+      "notes": "User story: docs/user-stories/send-files-to-claude.md"
     }
   ],
   "metrics": {
-    "total": 14,
-    "passing": 10,
+    "total": 16,
+    "passing": 12,
     "failing": 4
   }
 }
