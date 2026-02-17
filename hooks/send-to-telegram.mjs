@@ -21,28 +21,65 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const PROJECT_ROOT = join(__dirname, '..');
 
-// Read token from .env file (preferred over environment variable)
-async function getTokenFromEnv() {
+// Cache for .env values
+let envCache = null;
+
+/**
+ * Load and parse .env file
+ */
+async function loadEnv() {
+  if (envCache) return envCache;
+
   const envPath = join(PROJECT_ROOT, '.env');
   if (existsSync(envPath)) {
     const content = await readFile(envPath, 'utf-8');
-    const match = content.match(/^TELEGRAM_BOT_TOKEN=(.+)$/m);
-    if (match) {
-      return match[1].trim();
+    envCache = {};
+
+    // Parse each line
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      const match = trimmed.match(/^([^=]+)=(.*)$/);
+      if (match) {
+        const key = match[1].trim();
+        let value = match[2].trim();
+        // Remove quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        envCache[key] = value;
+      }
     }
   }
-  // Fallback to environment variable
-  return process.env.TELEGRAM_BOT_TOKEN;
+
+  return envCache || {};
+}
+
+/**
+ * Get env value with fallback to process.env
+ */
+async function getEnv(key, defaultValue = null) {
+  const env = await loadEnv();
+  return env[key] || process.env[key] || defaultValue;
+}
+
+// Read token from .env file (preferred over environment variable)
+async function getTokenFromEnv() {
+  return getEnv('TELEGRAM_BOT_TOKEN');
 }
 
 // Configuration
 const STATE_DIR = process.env.STATE_DIR || join(homedir(), '.claude');
 const TELEGRAM_CHAT_ID_FILE = join(STATE_DIR, 'telegram_chat_id');
 const TELEGRAM_PENDING_FILE = join(STATE_DIR, 'telegram_pending');
-const PENDING_TIMEOUT_MS = parseInt(process.env.PENDING_TIMEOUT_MS || '600000', 10);
+// Default timeout: 24 hours (will be overridden by .env if set)
+const DEFAULT_PENDING_TIMEOUT_MS = 86400000;
 
-// Token will be loaded asynchronously
+// Token and timeout will be loaded asynchronously
 let TELEGRAM_BOT_TOKEN = null;
+let PENDING_TIMEOUT_MS = DEFAULT_PENDING_TIMEOUT_MS;
 
 /**
  * Atomic file write
@@ -482,6 +519,11 @@ async function main() {
     log('ERROR: TELEGRAM_BOT_TOKEN not found in .env or environment');
     process.exit(1);
   }
+
+  // Load PENDING_TIMEOUT_MS from .env
+  const timeoutStr = await getEnv('PENDING_TIMEOUT_MS', '86400000');
+  PENDING_TIMEOUT_MS = parseInt(timeoutStr, 10);
+  log(`PENDING_TIMEOUT_MS loaded: ${PENDING_TIMEOUT_MS}ms (${PENDING_TIMEOUT_MS / 3600000}h)`);
 
   // Check for pending message
   const pending = await checkPending();

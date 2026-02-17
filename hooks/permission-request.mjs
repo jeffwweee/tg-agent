@@ -1,17 +1,19 @@
 #!/usr/bin/env node
 
 /**
- * Claude Code PreToolUse Hook - Permission Request via Telegram
+ * Claude Code PreToolUse Hook - Permission Request & Selection via Telegram
  *
  * This script runs before Claude uses a tool that requires permission.
- * It sends a request to Telegram with Approve/Deny buttons and waits
- * for the user's response.
+ * It handles two types of requests:
+ *
+ * 1. Tool Permission: Sends approve/deny buttons for tool execution
+ * 2. AskUserQuestion: Sends selection options for multi-choice questions
  *
  * Usage: Configured in Claude Code settings as a PreToolUse hook
  *
  * Exit codes:
- *   0 - Approved (tool can proceed)
- *   2 - Denied (tool should not proceed)
+ *   0 - Approved/Answered (tool can proceed)
+ *   2 - Denied/Cancelled (tool should not proceed)
  *   1 - Error or timeout (tool should not proceed)
  */
 
@@ -29,10 +31,13 @@ const PROJECT_ROOT = join(__dirname, '..');
 // Configuration
 const STATE_DIR = process.env.STATE_DIR || join(homedir(), '.claude');
 const PERMISSION_DIR = join(STATE_DIR, 'permissions');
+const SELECTION_DIR = join(STATE_DIR, 'selections');
 const PERMISSION_INDEX_FILE = join(STATE_DIR, 'permission_index');
+const SELECTION_INDEX_FILE = join(STATE_DIR, 'selection_index');
 const TELEGRAM_CHAT_ID_FILE = join(STATE_DIR, 'telegram_chat_id');
 const PERMISSION_RULES_FILE = join(STATE_DIR, 'tool_permissions.json');
 const TIMEOUT_MS = parseInt(process.env.PERMISSION_TIMEOUT_MS || '300000', 10); // 5 min default
+const SELECTION_TIMEOUT_MS = parseInt(process.env.SELECTION_TIMEOUT_MS || '300000', 10); // 5 min default
 const POLL_INTERVAL_MS = 500;
 
 // Token will be loaded asynchronously
@@ -382,6 +387,351 @@ async function sendTimeoutMessage(chatId, messageId, toolName) {
   }).catch(() => {}); // Ignore errors
 }
 
+// ============================================================
+// Selection Request Functions (for AskUserQuestion tool)
+// ============================================================
+
+/**
+ * Generate unique selection request ID
+ */
+async function generateSelectionRequestId() {
+  await ensureDir(STATE_DIR);
+
+  let index = { lastId: 0 };
+  const content = await safeRead(SELECTION_INDEX_FILE);
+  if (content) {
+    try {
+      index = JSON.parse(content);
+    } catch {
+      // Use default
+    }
+  }
+
+  index.lastId += 1;
+  await atomicWrite(SELECTION_INDEX_FILE, JSON.stringify(index));
+
+  const timestamp = Date.now().toString(36);
+  return `sel_${timestamp}_${index.lastId}`;
+}
+
+/**
+ * Save selection request to state file
+ */
+async function saveSelectionRequest(request) {
+  await ensureDir(SELECTION_DIR);
+  const filePath = join(SELECTION_DIR, `${request.requestId}.json`);
+  await atomicWrite(filePath, JSON.stringify(request, null, 2));
+}
+
+/**
+ * Get selection request from state file
+ */
+async function getSelectionRequest(requestId) {
+  const filePath = join(SELECTION_DIR, `${requestId}.json`);
+  const content = await safeRead(filePath);
+  if (!content) {
+    return null;
+  }
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Update selection request
+ */
+async function updateSelectionRequest(requestId, updates) {
+  const request = await getSelectionRequest(requestId);
+  if (!request) return null;
+
+  const updated = { ...request, ...updates };
+  const filePath = join(SELECTION_DIR, `${requestId}.json`);
+  await atomicWrite(filePath, JSON.stringify(updated, null, 2));
+  return updated;
+}
+
+/**
+ * Delete selection request
+ */
+async function deleteSelectionRequest(requestId) {
+  const filePath = join(SELECTION_DIR, `${requestId}.json`);
+  if (existsSync(filePath)) {
+    await unlink(filePath);
+  }
+}
+
+/**
+ * Build inline keyboard for selection
+ */
+function buildSelectionKeyboard(requestId, options, multiSelect) {
+  const keyboard = [];
+
+  if (multiSelect) {
+    // Multi-select: each button toggles selection
+    for (const option of options) {
+      const prefix = option.selected ? '☑️ ' : '⬜ ';
+      const text = `${prefix}${truncateLabel(option.label, 30)}`;
+      keyboard.push([{
+        text,
+        callback_data: `toggle:${requestId}:${option.index}`,
+      }]);
+    }
+    // Submit and Cancel row
+    keyboard.push([
+      { text: '✓ Submit', callback_data: `submit:${requestId}` },
+      { text: '✗ Cancel', callback_data: `cancel:${requestId}` },
+    ]);
+  } else {
+    // Single-select: each button submits immediately
+    for (const option of options) {
+      keyboard.push([{
+        text: truncateLabel(option.label, 35),
+        callback_data: `select:${requestId}:${option.index}`,
+      }]);
+    }
+    // Type something and Cancel row
+    keyboard.push([
+      { text: '✏️ Type something', callback_data: `custom:${requestId}` },
+      { text: '✗ Cancel', callback_data: `cancel:${requestId}` },
+    ]);
+  }
+
+  return { inline_keyboard: keyboard };
+}
+
+/**
+ * Truncate label for button display
+ */
+function truncateLabel(label, maxLength) {
+  if (label.length <= maxLength) {
+    return label;
+  }
+  return label.slice(0, maxLength - 3) + '...';
+}
+
+/**
+ * Format selection question for Telegram
+ */
+function formatSelectionQuestion(question, header, options) {
+  let text = '';
+
+  if (header) {
+    text += `📋 *${escapeTelegram(header)}*\n\n`;
+  } else {
+    text += '📋 ';
+  }
+
+  text += `${escapeTelegram(question)}\n\n`;
+
+  for (const option of options) {
+    text += `*${escapeTelegram(option.label)}*`;
+    if (option.description) {
+      text += `\n   _${escapeTelegram(option.description)}_`;
+    }
+    text += '\n\n';
+  }
+
+  text += '─────────────────';
+
+  return text;
+}
+
+/**
+ * Send selection request to Telegram with inline keyboard
+ */
+async function sendSelectionRequest(chatId, requestId, question, header, options, multiSelect) {
+  if (!TELEGRAM_BOT_TOKEN) {
+    throw new Error('TELEGRAM_BOT_TOKEN not set');
+  }
+
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+
+  const text = formatSelectionQuestion(question, header, options);
+
+  const body = {
+    chat_id: chatId,
+    text,
+    parse_mode: 'MarkdownV2',
+    reply_markup: buildSelectionKeyboard(requestId, options, multiSelect),
+  };
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  const data = await response.json();
+
+  if (!data.ok) {
+    throw new Error(`Telegram API error: ${data.description}`);
+  }
+
+  return data.result.message_id;
+}
+
+/**
+ * Send selection timeout message
+ */
+async function sendSelectionTimeoutMessage(chatId, messageId, question) {
+  if (!TELEGRAM_BOT_TOKEN) return;
+
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageText`;
+
+  const text = `📋 *Selection Request*\n\n` +
+    `${escapeTelegram(question.slice(0, 100))}\n\n` +
+    `⏰ *TIMED OUT* \\- No response received`;
+
+  await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text,
+      parse_mode: 'MarkdownV2',
+    }),
+  }).catch(() => {}); // Ignore errors
+}
+
+/**
+ * Wait for selection response (polling)
+ */
+async function waitForSelectionResponse(requestId, timeoutMs, pollIntervalMs) {
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < timeoutMs) {
+    const request = await getSelectionRequest(requestId);
+
+    if (!request) {
+      return { status: 'timeout', selectedIndices: [], selectedLabels: [] };
+    }
+
+    if (request.status === 'answered') {
+      const selectedLabels = request.selectedIndices.map(i => request.options[i]?.label || '');
+      const result = {
+        status: 'answered',
+        selectedIndices: request.selectedIndices,
+        selectedLabels,
+        customInput: request.customInput,
+      };
+      await deleteSelectionRequest(requestId);
+      return result;
+    }
+
+    if (request.status === 'cancelled') {
+      await deleteSelectionRequest(requestId);
+      return { status: 'cancelled', selectedIndices: [], selectedLabels: [] };
+    }
+
+    if (request.status === 'expired') {
+      await deleteSelectionRequest(requestId);
+      return { status: 'timeout', selectedIndices: [], selectedLabels: [] };
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+  }
+
+  // Mark as expired
+  await updateSelectionRequest(requestId, { status: 'expired' });
+  return { status: 'timeout', selectedIndices: [], selectedLabels: [] };
+}
+
+/**
+ * Handle AskUserQuestion tool
+ */
+async function handleAskUserQuestion(chatId, toolInput, log) {
+  // Extract questions - Claude sends as array with single question typically
+  const questions = toolInput.questions || [];
+  if (questions.length === 0) {
+    log('ERROR: No questions in AskUserQuestion input');
+    console.log(JSON.stringify({ decision: 'block', reason: 'No questions provided' }));
+    process.exit(0);
+  }
+
+  // Get first question
+  const questionData = questions[0];
+  const question = questionData.question || 'Please select an option';
+  const header = questionData.header;
+  const rawOptions = questionData.options || [];
+  const multiSelect = toolInput.multiSelect || questionData.multiSelect || false;
+
+  // Convert options to our format
+  const options = rawOptions.map((opt, idx) => ({
+    index: idx,
+    label: opt.label || opt.text || `Option ${idx + 1}`,
+    description: opt.description,
+    selected: false,
+  }));
+
+  log(`Question: ${question.slice(0, 100)}...`);
+  log(`Options: ${options.length}, Multi-select: ${multiSelect}`);
+
+  // Generate request ID
+  const requestId = await generateSelectionRequestId();
+  log(`Selection request ID: ${requestId}`);
+
+  // Save selection request to state
+  await saveSelectionRequest({
+    requestId,
+    question,
+    header,
+    options,
+    multiSelect,
+    chatId,
+    timestamp: Date.now(),
+    status: 'pending',
+    selectedIndices: [],
+  });
+
+  // Send to Telegram
+  let messageId;
+  try {
+    messageId = await sendSelectionRequest(chatId, requestId, question, header, options, multiSelect);
+    log(`Selection message sent (ID: ${messageId})`);
+
+    // Update request with message ID
+    await updateSelectionRequest(requestId, { messageId });
+  } catch (err) {
+    log(`ERROR: Failed to send selection message: ${err.message}`);
+    await deleteSelectionRequest(requestId);
+    console.log(JSON.stringify({ decision: 'block', reason: `Failed to send selection: ${err.message}` }));
+    process.exit(0);
+  }
+
+  // Wait for response
+  log(`Waiting for selection response (timeout: ${SELECTION_TIMEOUT_MS}ms)...`);
+  const result = await waitForSelectionResponse(requestId, SELECTION_TIMEOUT_MS, POLL_INTERVAL_MS);
+
+  if (result.status === 'timeout') {
+    log('Selection request timed out');
+    await sendSelectionTimeoutMessage(chatId, messageId, question);
+    console.log(JSON.stringify({ decision: 'block', reason: 'Selection request timed out' }));
+    process.exit(0);
+  }
+
+  if (result.status === 'cancelled') {
+    log('Selection cancelled');
+    console.log(JSON.stringify({ decision: 'block', reason: 'User cancelled selection' }));
+    process.exit(0);
+  }
+
+  // Answered - return selection to Claude
+  log(`Selection answered: indices=${result.selectedIndices.join(',')}, custom=${result.customInput || 'none'}`);
+
+  // Return the selection as the tool output
+  const output = {
+    selectedIndices: result.selectedIndices,
+    selectedLabels: result.selectedLabels,
+    customInput: result.customInput || null,
+  };
+
+  console.log(JSON.stringify(output));
+  process.exit(0);
+}
+
 /**
  * Wait for permission response (polling)
  */
@@ -466,6 +816,13 @@ async function main() {
 
   log(`Tool: ${toolName}`);
   log(`Input: ${JSON.stringify(toolInput).slice(0, 200)}...`);
+
+  // Handle AskUserQuestion tool specially (selection list)
+  if (toolName === 'AskUserQuestion') {
+    log('Handling AskUserQuestion as selection request');
+    await handleAskUserQuestion(chatId, toolInput, log);
+    return; // handleAskUserQuestion exits on its own
+  }
 
   // Check permission rules
   const rulesConfig = await loadPermissionRules();

@@ -10,6 +10,7 @@ import {
   formatHealthReportForLog,
   formatHealthReportForTelegram,
 } from '../health/startup-checks.js';
+import { TaskMonitor } from '../monitor/task-monitor.js';
 
 // Load environment variables (override existing env vars with .env values)
 config({ override: true });
@@ -25,9 +26,13 @@ const envSchema = z.object({
   DEFAULT_WORKSPACE: z.string().optional(),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
   LOG_PRETTY: z.string().transform((val) => val === 'true').default('true'),
-  PENDING_TIMEOUT_MS: z.string().transform((val) => parseInt(val, 10)).default('600000'),
+  PENDING_TIMEOUT_MS: z.string().transform((val) => parseInt(val, 10)).default('86400000'),
   NOTIFY_STARTUP: z.string().transform((val) => val === 'true').default('false'),
   USE_TUNNEL: z.string().transform((val) => val === 'true').default('false'),
+  // Task monitor configuration
+  NOTIFY_TASK_COMPLETION: z.string().transform((val) => val === 'true').default('true'),
+  TASK_MONITOR_INTERVAL_MS: z.string().transform((val) => parseInt(val, 10)).default('5000'),
+  CLAUDE_SESSION_ID: z.string().optional(),
 });
 
 type Env = z.infer<typeof envSchema>;
@@ -122,6 +127,8 @@ fastify.get('/', async () => {
 });
 
 // Register routes
+let taskMonitor: TaskMonitor | null = null;
+
 const start = async () => {
   try {
     // Run startup health checks
@@ -149,6 +156,22 @@ const start = async () => {
       fastify.log.warn('Starting in degraded mode due to critical errors');
     }
 
+    // Start task monitor if enabled
+    if (env.NOTIFY_TASK_COMPLETION && env.CLAUDE_SESSION_ID) {
+      taskMonitor = new TaskMonitor(
+        {
+          sessionId: env.CLAUDE_SESSION_ID,
+          pollingIntervalMs: env.TASK_MONITOR_INTERVAL_MS,
+          enabled: true,
+        },
+        (msg) => fastify.log.info(`[TaskMonitor] ${msg}`)
+      );
+      await taskMonitor.start();
+      fastify.log.info(`Task monitor started for session: ${env.CLAUDE_SESSION_ID}`);
+    } else if (env.NOTIFY_TASK_COMPLETION) {
+      fastify.log.warn('Task monitor enabled but CLAUDE_SESSION_ID not set');
+    }
+
     // Register Telegram routes
     await registerTelegramRoutes(fastify);
 
@@ -165,6 +188,13 @@ const start = async () => {
 // Graceful shutdown
 const shutdown = async (signal: string) => {
   fastify.log.info(`Received ${signal}, shutting down...`);
+
+  // Stop task monitor
+  if (taskMonitor) {
+    taskMonitor.stop();
+    fastify.log.info('Task monitor stopped');
+  }
+
   await fastify.close();
   process.exit(0);
 };
