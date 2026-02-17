@@ -14,10 +14,29 @@ import {
 import { saveChatId, savePending, getPending, clearPending } from '../../state/files.js';
 import { savePhoto, getLargestPhoto, formatPhotoMessageForClaude } from '../../telegram/photo.js';
 import {
+  saveDocument,
+  formatFileMessageForClaude,
+  isFileTypeAllowed,
+  getAllowedFileTypes,
+} from '../../telegram/document.js';
+import {
   getPermissionRequest,
   updatePermissionRequest,
   formatToolInputForDisplay,
 } from '../../state/permission.js';
+import {
+  getSelectionRequest,
+  updateSelectionRequest,
+  getPendingCustomInputRequest,
+} from '../../state/selection.js';
+import {
+  parseSelectionCallback,
+  formatAnsweredMessage,
+  formatCancelledMessage,
+  formatAwaitingInputPrompt,
+  buildSelectionKeyboard,
+  formatSelectionQuestion,
+} from '../../telegram/selection.js';
 import { startTypingIndicator, stopAllTypingIndicators } from '../../telegram/typing-indicator.js';
 import {
   injectPrompt,
@@ -164,6 +183,191 @@ async function sendReply(chatId: number, text: string): Promise<void> {
 }
 
 /**
+ * Handle selection callback query (single-select, toggle, submit, cancel, custom)
+ */
+async function handleSelectionCallback(
+  callbackQuery: NonNullable<TelegramUpdate['callback_query']>,
+  log: import('fastify').FastifyLoggerInstance
+): Promise<boolean> {
+  const { id: callbackId, from, message, data } = callbackQuery;
+  const client = getTelegramClient();
+
+  if (!data) {
+    return false;
+  }
+
+  // Check if this is a selection callback
+  const parsed = parseSelectionCallback(data);
+  if (!parsed) {
+    return false; // Not a selection callback
+  }
+
+  const { action, requestId, optionIndex } = parsed;
+
+  // Verify user is allowed
+  const verification = verifyUser(from);
+  if (!verification.allowed) {
+    log.warn({ user_id: from.id }, `Unauthorized selection callback: ${verification.error}`);
+    await client.answerCallbackQuery(callbackId, {
+      text: 'Unauthorized',
+      show_alert: true,
+    });
+    return true;
+  }
+
+  // Get the selection request
+  const request = await getSelectionRequest(requestId);
+  if (!request) {
+    await client.answerCallbackQuery(callbackId, {
+      text: 'Request not found or expired',
+      show_alert: true,
+    });
+    return true;
+  }
+
+  // Check if already responded
+  if (request.status !== 'pending') {
+    await client.answerCallbackQuery(callbackId, {
+      text: `Already ${request.status}`,
+    });
+    return true;
+  }
+
+  log.info({ requestId, action, optionIndex, from: from.id }, 'Selection callback received');
+
+  // Handle different actions
+  switch (action) {
+    case 'select': {
+      // Single-select: immediately submit with this option
+      const selectedLabel = request.options[optionIndex!]?.label || '';
+      await updateSelectionRequest(requestId, {
+        status: 'answered',
+        selectedIndices: [optionIndex!],
+      });
+
+      await client.answerCallbackQuery(callbackId, {
+        text: `✅ Selected: ${selectedLabel}`,
+      });
+
+      // Update the original message
+      if (message && message.chat && message.message_id) {
+        const updatedText = formatAnsweredMessage(request.question, [selectedLabel]);
+        await client.editMessageText(message.chat.id, message.message_id, updatedText, {
+          parse_mode: 'Markdown',
+        });
+      }
+      break;
+    }
+
+    case 'toggle': {
+      // Multi-select: toggle the option
+      const currentSelected = [...request.selectedIndices];
+      const idx = currentSelected.indexOf(optionIndex!);
+
+      if (idx >= 0) {
+        currentSelected.splice(idx, 1);
+      } else {
+        currentSelected.push(optionIndex!);
+      }
+
+      await updateSelectionRequest(requestId, {
+        selectedIndices: currentSelected,
+      });
+
+      const selectedLabel = request.options[optionIndex!]?.label || '';
+      await client.answerCallbackQuery(callbackId, {
+        text: idx >= 0 ? `Deselected: ${selectedLabel}` : `Selected: ${selectedLabel}`,
+      });
+
+      // Update keyboard to show selection state
+      if (message && message.chat && message.message_id) {
+        const updatedText = formatSelectionQuestion(
+          request.question,
+          request.header,
+          request.options,
+          currentSelected,
+          request.multiSelect
+        );
+
+        await client.editMessageText(message.chat.id, message.message_id, updatedText, {
+          parse_mode: 'MarkdownV2',
+          reply_markup: buildSelectionKeyboard(requestId, request.options, currentSelected, request.multiSelect),
+        });
+      }
+      break;
+    }
+
+    case 'submit': {
+      // Multi-select: submit current selections
+      const selectedLabels = request.selectedIndices.map(i => request.options[i]?.label || '');
+
+      if (request.selectedIndices.length === 0) {
+        await client.answerCallbackQuery(callbackId, {
+          text: 'Please select at least one option',
+          show_alert: true,
+        });
+        return true;
+      }
+
+      await updateSelectionRequest(requestId, {
+        status: 'answered',
+      });
+
+      await client.answerCallbackQuery(callbackId, {
+        text: `✅ Submitted ${request.selectedIndices.length} selection(s)`,
+      });
+
+      // Update the original message
+      if (message && message.chat && message.message_id) {
+        const updatedText = formatAnsweredMessage(request.question, selectedLabels);
+        await client.editMessageText(message.chat.id, message.message_id, updatedText, {
+          parse_mode: 'Markdown',
+        });
+      }
+      break;
+    }
+
+    case 'custom': {
+      // Request custom text input
+      await updateSelectionRequest(requestId, {
+        status: 'awaiting_input',
+      });
+
+      await client.answerCallbackQuery(callbackId, {
+        text: 'Type your answer below',
+      });
+
+      // Send prompt for text input
+      const promptText = formatAwaitingInputPrompt(request.question);
+      await client.sendMessage(message!.chat.id, promptText, { parse_mode: 'Markdown' });
+      break;
+    }
+
+    case 'cancel': {
+      // Cancel the selection
+      await updateSelectionRequest(requestId, {
+        status: 'cancelled',
+      });
+
+      await client.answerCallbackQuery(callbackId, {
+        text: '❌ Cancelled',
+      });
+
+      // Update the original message
+      if (message && message.chat && message.message_id) {
+        const updatedText = formatCancelledMessage(request.question);
+        await client.editMessageText(message.chat.id, message.message_id, updatedText, {
+          parse_mode: 'Markdown',
+        });
+      }
+      break;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Handle callback query from inline keyboard (approve/deny permissions)
  */
 async function handleCallbackQuery(
@@ -261,7 +465,11 @@ export async function handleWebhook(
   // Handle callback query (inline keyboard responses)
   if (update.callback_query) {
     try {
-      await handleCallbackQuery(update.callback_query, log);
+      // First try selection callback, then permission callback
+      const handled = await handleSelectionCallback(update.callback_query, log);
+      if (!handled) {
+        await handleCallbackQuery(update.callback_query, log);
+      }
     } catch (err) {
       log.error({ err }, 'Callback query handler error');
     }
@@ -344,6 +552,67 @@ export async function handleWebhook(
     return;
   }
 
+  // Handle document messages
+  if (message.document) {
+    try {
+      const doc = message.document;
+
+      // Check tmux session
+      if (!(await sessionExists())) {
+        await sendReply(chat.id, '⚠️ Claude session not running. Start tmux with Claude first.');
+        reply.code(200).send({ ok: true });
+        return;
+      }
+
+      // Validate file type
+      const filename = doc.file_name || 'unknown';
+      if (!isFileTypeAllowed(filename)) {
+        const allowedTypes = getAllowedFileTypes().join(', ');
+        await sendReply(chat.id, `⚠️ Unsupported file type. Allowed types: ${allowedTypes}`);
+        reply.code(200).send({ ok: true });
+        return;
+      }
+
+      log.info({ fileId: doc.file_id, filename, size: doc.file_size }, 'Received document');
+
+      // Download and save the document
+      const savedDoc = await saveDocument(doc);
+      log.info({ path: savedDoc.filePath }, 'Document saved');
+
+      // Format message for Claude
+      const promptText = formatFileMessageForClaude(savedDoc, message.caption);
+
+      // Save pending state
+      await savePending({
+        chatId: chat.id,
+        userId: from?.id || 0,
+        messageId: message_id,
+        timestamp: Date.now(),
+        text: promptText,
+      });
+
+      // Start typing indicator
+      startTypingIndicator(chat.id);
+
+      // Inject prompt to Claude
+      await injectPrompt(promptText);
+
+      // Acknowledge receipt
+      const client = getTelegramClient();
+      await client.setMessageReaction(chat.id, message_id, '📎');
+
+      log.info({ path: savedDoc.filePath }, 'Document message injected to Claude');
+    } catch (err) {
+      log.error({ err }, 'Failed to process document');
+      // Don't use markdown for error messages to avoid parsing issues
+      const client = getTelegramClient();
+      await client.sendMessage(chat.id, `Failed to process document: ${(err as Error).message}`);
+    }
+
+    reply.code(200).send({ ok: true });
+    return;
+  }
+
   // Handle commands
   if (text && text.startsWith(COMMAND_PREFIX)) {
     const parts = text.slice(1).split(/\s+/);
@@ -370,6 +639,26 @@ export async function handleWebhook(
   // Handle regular message
   if (text) {
     try {
+      // Check if there's a pending selection request awaiting custom input
+      const pendingSelection = await getPendingCustomInputRequest(chat.id);
+      if (pendingSelection) {
+        log.info({ requestId: pendingSelection.requestId, text: text.slice(0, 50) }, 'Received custom input for selection');
+
+        // Update the selection request with the custom input
+        await updateSelectionRequest(pendingSelection.requestId, {
+          status: 'answered',
+          customInput: text,
+        });
+
+        // Send confirmation to user
+        const client = getTelegramClient();
+        const confirmText = `✅ Received: "${text.slice(0, 100)}${text.length > 100 ? '...' : ''}"`;
+        await client.sendMessage(chat.id, confirmText);
+
+        reply.code(200).send({ ok: true });
+        return;
+      }
+
       // Check tmux session
       if (!(await sessionExists())) {
         await sendReply(chat.id, '⚠️ Claude session not running. Start tmux with Claude first.');

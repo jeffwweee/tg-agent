@@ -1,15 +1,33 @@
 # Progress: tg-agent
 
 ## Current State
-- **Working on**: None - MVP Hardening complete
-- **Last commit**: `abc123` "feat: add tool approval and production scripts"
+- **Working on**: None - FEAT-017 Phase 1 complete
+- **Last commit**: FEAT-017 Selection list support (Phase 1 MVP)
 - **Server**: `npm run start:dev` (port 3000)
-- **Clean state**: ✅ All tests passing, production ready
+- **Clean state**: All tests passing (48 tests), typecheck clean
 - **Known issues**: None
 
 ## Session Log
 
-### 2026-02-15 Session #5 (Current)
+### 2026-02-16 Session #6 (Current)
+**Accomplished:**
+- FEAT-017: Selection List Support (Phase 1 - Core Single-Select MVP)
+- Created `src/state/selection.ts` - Selection state management
+- Created `src/telegram/selection.ts` - Selection UI components
+- Modified `hooks/permission-request.mjs` - Added AskUserQuestion tool handling
+- Modified `src/server/routes/telegram.ts` - Added selection callback handlers
+
+**Left off:**
+- Phase 1 complete and passing
+- Phase 2 (enhanced multi-select) and Phase 3 (custom input polish) can be added later
+
+**Next:**
+- Manual testing with real AskUserQuestion tool
+- Additional edge case testing if needed
+
+---
+
+### 2026-02-15 Session #5
 **Accomplished:**
 - MVP Hardening sprint completed
 - All core features verified and passing
@@ -114,9 +132,11 @@ npm run start:dev
 Located in `~/.claude/`:
 - `telegram_chat_id` - Current chat ID
 - `telegram_pending` - Pending message state
-- `telegram_permission` - Pending tool approval
+- `permissions/` - Pending tool approvals
+- `selections/` - Pending selection requests
 
 ---
 
 _Project initialized 2026-02-14_
 _MVP completed 2026-02-15_
+_Selection support added 2026-02-16_
