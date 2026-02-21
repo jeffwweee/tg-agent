@@ -18,7 +18,7 @@ export interface InjectionResult {
   error?: string;
 }
 
-const DEFAULT_COMMAND = '/mcp tg-agent:telegram_poll';
+const DEFAULT_COMMAND = '[TELEGRAM] New message received. Run telegram_poll to read it.';
 
 export class TmuxInjector {
   private sessionName: string;
@@ -33,9 +33,36 @@ export class TmuxInjector {
    * Inject wake-up command into tmux session
    */
   async inject(): Promise<InjectionResult> {
-    return new Promise((resolve) => {
-      const args = ['send-keys', '-t', this.sessionName, this.command, 'Enter'];
+    try {
+      // Step 1: Send the text literally (no interpretation)
+      const textResult = await this.runTmuxCommand(['send-keys', '-t', this.sessionName, '-l', this.command]);
+      if (!textResult.success) {
+        return textResult;
+      }
 
+      // Step 2: Small delay before sending Enter
+      await this.sleep(50);
+
+      // Step 3: Send Enter key separately
+      const enterResult = await this.runTmuxCommand(['send-keys', '-t', this.sessionName, 'Enter']);
+
+      if (enterResult.success) {
+        logger.info(`Tmux injection successful`, {
+          session: this.sessionName,
+          command: this.command,
+        });
+      }
+
+      return enterResult;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error(`Tmux injection failed`, { error: errorMsg });
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  private runTmuxCommand(args: string[]): Promise<InjectionResult> {
+    return new Promise((resolve) => {
       logger.debug(`Executing: tmux ${args.join(' ')}`);
 
       const proc = spawn('tmux', args, {
@@ -49,29 +76,21 @@ export class TmuxInjector {
       });
 
       proc.on('error', (error) => {
-        const errorMsg = error.message;
-        logger.error(`Tmux injection failed`, { error: errorMsg });
-        resolve({ success: false, error: errorMsg });
+        resolve({ success: false, error: error.message });
       });
 
       proc.on('close', (code) => {
         if (code === 0) {
-          logger.info(`Tmux injection successful`, {
-            session: this.sessionName,
-            command: this.command,
-          });
           resolve({ success: true });
         } else {
-          const errorMsg = stderr.trim() || `tmux exited with code ${code}`;
-          logger.error(`Tmux injection failed`, {
-            session: this.sessionName,
-            code,
-            error: errorMsg,
-          });
-          resolve({ success: false, error: errorMsg });
+          resolve({ success: false, error: stderr.trim() || `tmux exited with code ${code}` });
         }
       });
     });
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   /**

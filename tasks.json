@@ -1,7 +1,7 @@
 {
   "project": "tg-agent",
   "version": "2.0.0",
-  "last_updated": "2026-02-21T05:45:00Z",
+  "last_updated": "2026-02-21T06:45:00Z",
   "current_focus": null,
   "tasks": [
     {
@@ -265,6 +265,26 @@
       ],
       "files": ["src/mcp/tools/ask.ts", "src/mcp/tools/wait.ts", "src/telegram/keyboard.ts"],
       "notes": "Consider Telegram inline keyboards for yes/no approvals: [Approve] [Reject]"
+    },
+    {
+      "id": "V2-016",
+      "title": "Gateway typing indicator and reaction feedback",
+      "description": "Gateway should send typing indicator to Telegram chat when message arrives, and add a reaction (👀) to the original message. When message is acknowledged via telegram_ack, update the reaction to ✅ to show it was processed.",
+      "priority": "P1",
+      "status": "pending",
+      "dependencies": ["V2-004", "V2-007"],
+      "steps": [
+        "Add setMessageReaction method to TelegramClient (Telegram Bot API)",
+        "Store original message_id in inbox when saving to Redis",
+        "Gateway: send typing indicator when webhook receives message",
+        "Gateway: add 👀 reaction to original message when saved to inbox",
+        "MCP ack tool: call reaction update to ✅ after successful ack",
+        "Add reaction config options (REACTION_PENDING, REACTION_ACKED)",
+        "Update .env.example with new config options",
+        "Test full flow: message → typing → 👀 → ack → ✅"
+      ],
+      "files": ["src/telegram/client.ts", "src/gateway/server.ts", "src/mcp/tools/ack.ts", "src/inbox/client.ts", ".env.example"],
+      "notes": "Requires Telegram Bot API setMessageReaction endpoint. Need to store chat_id + message_id mapping in Redis inbox."
     }
   ],
   "phases": [
@@ -302,6 +322,11 @@
       "name": "Hooks",
       "tasks": ["V2-014", "V2-015"],
       "description": "Response and approval hooks for Telegram integration"
+    },
+    {
+      "name": "UX Feedback",
+      "tasks": ["V2-016"],
+      "description": "Typing indicators and reaction-based message status"
     }
   ]
 }
