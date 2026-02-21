@@ -307,6 +307,47 @@
       ],
       "files": ["src/config/index.ts", "src/gateway/server.ts", "src/inbox/client.ts", "src/mcp/tools/poll.ts", "src/mcp/tools/send.ts", "src/gateway/tmux-injector.ts", "config/bots.json"],
       "notes": "Key design question: single gateway routing multiple bots vs separate gateway per bot. Consider dev-workspace session/project mapping."
+    },
+    {
+      "id": "V2-018",
+      "title": "Media and file support",
+      "description": "Enable sending photos and files via Telegram for Claude Code to analyze. Gateway should handle photo/document updates, download media via Telegram API, and include media metadata/URL in inbox messages. Claude can then analyze images using vision capabilities.",
+      "priority": "P1",
+      "status": "pending",
+      "dependencies": ["V2-004"],
+      "steps": [
+        "Update TelegramUpdate type to include photo/document fields",
+        "Add getFile method to TelegramClient for downloading media",
+        "Gateway: detect photo/document in webhook payload",
+        "Gateway: get file_path via Telegram API, construct download URL",
+        "Inbox: store media_type, file_id, file_url in message metadata",
+        "telegram_poll: include media info in response (url, type, dimensions)",
+        "Handle multiple photos (albums) - send as array",
+        "Handle documents (PDFs, code files) - include filename, mime_type",
+        "Test: send photo from Telegram, verify Claude receives URL"
+      ],
+      "files": ["src/telegram/client.ts", "src/gateway/server.ts", "src/inbox/client.ts", "src/inbox/types.ts", "src/mcp/tools/poll.ts"],
+      "notes": "Telegram photos have multiple sizes. Use the largest. Files expire after ~1 hour if not downloaded - consider caching or immediate download."
+    },
+    {
+      "id": "V2-019",
+      "title": "Session context clearing",
+      "description": "Add ability to clear/reset context for a running Claude Code session via Telegram command. Useful for starting fresh without restarting the entire session.",
+      "priority": "P2",
+      "status": "pending",
+      "dependencies": ["V2-004"],
+      "steps": [
+        "Design clear context mechanism (MCP tool? Special command?)",
+        "Option A: MCP tool telegram_clear_context that signals Claude",
+        "Option B: Special message pattern that Claude interprets as clear",
+        "Option C: Hook that injects /compact or similar into tmux",
+        "Implement chosen approach",
+        "Add confirmation reaction or message when context cleared",
+        "Document usage: send '/clear' or '/reset' via Telegram",
+        "Test: verify context is cleared without breaking session"
+      ],
+      "files": ["src/mcp/tools/clear.ts", "src/gateway/server.ts", "src/gateway/tmux-injector.ts"],
+      "notes": "Consider Claude Code's native /compact command. May need to inject keystroke into tmux to trigger built-in context management."
     }
   ],
   "phases": [
@@ -354,6 +395,16 @@
       "name": "Multi-tenancy",
       "tasks": ["V2-017"],
       "description": "Multi-bot/multi-session support for parallel projects"
+    },
+    {
+      "name": "Media",
+      "tasks": ["V2-018"],
+      "description": "Photo and file support for visual analysis"
+    },
+    {
+      "name": "Session Management",
+      "tasks": ["V2-019"],
+      "description": "Context clearing and session control"
     }
   ]
 }
