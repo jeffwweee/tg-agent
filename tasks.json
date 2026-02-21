@@ -1,7 +1,7 @@
 {
   "project": "tg-agent",
   "version": "2.0.0",
-  "last_updated": "2026-02-21T03:25:00Z",
+  "last_updated": "2026-02-21T05:45:00Z",
   "current_focus": null,
   "tasks": [
     {
@@ -203,6 +203,67 @@
         "Add Claude Code integration guide"
       ],
       "files": ["README.md", "docs/setup.md", "docs/mcp-tools.md"]
+    },
+    {
+      "id": "V2-013",
+      "title": "Tmux wake-up injection",
+      "description": "Implement tmux keystroke injection in gateway to wake up Claude Code when Telegram messages arrive. This completes the wake-up mechanism for v2.",
+      "priority": "P1",
+      "status": "pending",
+      "dependencies": ["V2-004"],
+      "steps": [
+        "Create src/gateway/tmux-injector.ts module",
+        "Detect if Claude Code is running in a tmux session",
+        "Implement keystroke injection using tmux send-keys",
+        "Add configurable tmux session name (TMUX_SESSION_NAME env var)",
+        "Add enable/disable flag (TMUX_WAKEUP_ENABLED env var)",
+        "Integrate injector into webhook handler after message saved to inbox",
+        "Add logging for injection events",
+        "Update .env.example with new config options"
+      ],
+      "files": ["src/gateway/tmux-injector.ts", "src/gateway/routes/webhook.ts", ".env.example"],
+      "notes": "Wake-up message format: '[TELEGRAM] New message received. Run telegram_poll to read it.'"
+    },
+    {
+      "id": "V2-014",
+      "title": "Response hook for auto-send",
+      "description": "Implement Claude Code hook that automatically sends responses to Telegram when Claude Code completes a response or task.",
+      "priority": "P1",
+      "status": "pending",
+      "dependencies": ["V2-006", "V2-013"],
+      "steps": [
+        "Research Claude Code hook system (Stop hook, Notification hook)",
+        "Create hooks/ directory for Claude Code hooks",
+        "Implement response capture mechanism",
+        "Create hook script that calls telegram_send with response content",
+        "Handle markdown formatting for Telegram (MarkdownV2 escaping)",
+        "Add configuration for hook enable/disable",
+        "Test hook integration with Claude Code",
+        "Document hook setup in README"
+      ],
+      "files": ["hooks/response-hook.sh", "hooks/response-hook.ts", ".claude/settings.json", "README.md"],
+      "notes": "May need to use Claude Code's Stop hook or Notification hook API"
+    },
+    {
+      "id": "V2-015",
+      "title": "Approval and choice handling",
+      "description": "Implement mechanism to handle Claude Code's approval requests and choice selections via Telegram. Allows remote user to approve/reject actions or select options.",
+      "priority": "P1",
+      "status": "pending",
+      "dependencies": ["V2-014"],
+      "steps": [
+        "Research Claude Code approval/choice prompt format",
+        "Design Telegram-based approval flow",
+        "Create MCP tool for sending approval requests (telegram_ask)",
+        "Create MCP tool for waiting on user response (telegram_wait_response)",
+        "Implement timeout handling for approvals",
+        "Handle choice selection (numbered options)",
+        "Add inline keyboard support for quick approvals (optional)",
+        "Test approval flow end-to-end",
+        "Document approval workflow"
+      ],
+      "files": ["src/mcp/tools/ask.ts", "src/mcp/tools/wait.ts", "src/telegram/keyboard.ts"],
+      "notes": "Consider Telegram inline keyboards for yes/no approvals: [Approve] [Reject]"
     }
   ],
   "phases": [
@@ -230,6 +291,16 @@
       "name": "Docs",
       "tasks": ["V2-012"],
       "description": "Documentation"
+    },
+    {
+      "name": "Wake-up",
+      "tasks": ["V2-013"],
+      "description": "Tmux injection for Claude Code wake-up"
+    },
+    {
+      "name": "Hooks",
+      "tasks": ["V2-014", "V2-015"],
+      "description": "Response and approval hooks for Telegram integration"
     }
   ]
 }
