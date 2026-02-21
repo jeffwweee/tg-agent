@@ -1,0 +1,223 @@
+{
+  "project": "tg-agent",
+  "version": "2.0.0",
+  "last_updated": "2026-02-21T10:00:00Z",
+  "current_focus": null,
+  "tasks": [
+    {
+      "id": "V2-001",
+      "title": "Project setup and scaffolding",
+      "description": "Initialize TypeScript project with proper structure, dependencies, and build configuration",
+      "priority": "P0",
+      "status": "pending",
+      "dependencies": [],
+      "steps": [
+        "Initialize package.json with dependencies (express, ioredis, @modelcontextprotocol/sdk)",
+        "Setup TypeScript with strict mode",
+        "Create src/ folder structure (gateway/, mcp/, inbox/, utils/)",
+        "Add build and dev scripts",
+        "Setup environment config (.env.example)"
+      ],
+      "files": ["package.json", "tsconfig.json", ".env.example", "src/index.ts"]
+    },
+    {
+      "id": "V2-002",
+      "title": "Redis inbox module",
+      "description": "Create Redis Streams inbox client with consumer group support",
+      "priority": "P0",
+      "status": "pending",
+      "dependencies": ["V2-001"],
+      "steps": [
+        "Create InboxClient class with ioredis",
+        "Implement addMessage (XADD with dedupe)",
+        "Implement getMessages (XREADGROUP with long-poll)",
+        "Implement ackMessages (XACK)",
+        "Implement setupConsumerGroup (XGROUP CREATE)",
+        "Add 12-hour lease reclaim logic (XCLAIM)"
+      ],
+      "files": ["src/inbox/client.ts", "src/inbox/types.ts"]
+    },
+    {
+      "id": "V2-003",
+      "title": "Telegram API client",
+      "description": "Create Telegram Bot API client for sending messages",
+      "priority": "P0",
+      "status": "pending",
+      "dependencies": ["V2-001"],
+      "steps": [
+        "Create TelegramClient class with fetch-based API calls",
+        "Implement sendMessage with retry logic",
+        "Implement sendChatAction (typing indicator)",
+        "Add markdown escaping utility (MarkdownV2)",
+        "Add message chunking utility (4000 char limit)"
+      ],
+      "files": ["src/telegram/client.ts", "src/telegram/chunk.ts", "src/telegram/escape.ts"]
+    },
+    {
+      "id": "V2-004",
+      "title": "Gateway webhook server",
+      "description": "Create Express server to receive Telegram webhooks and write to inbox",
+      "priority": "P0",
+      "status": "pending",
+      "dependencies": ["V2-002"],
+      "steps": [
+        "Create Express server with /telegram/webhook endpoint",
+        "Validate webhook signature (if enabled)",
+        "Parse Telegram Update object",
+        "Call inbox.addMessage with dedupe",
+        "Add allowlist validation for authorized users",
+        "Add health check endpoint"
+      ],
+      "files": ["src/gateway/server.ts", "src/gateway/routes/webhook.ts"]
+    },
+    {
+      "id": "V2-005",
+      "title": "MCP Server - telegram_poll tool",
+      "description": "Implement MCP tool for polling messages from inbox",
+      "priority": "P0",
+      "status": "pending",
+      "dependencies": ["V2-002"],
+      "steps": [
+        "Create MCP server with @modelcontextprotocol/sdk",
+        "Implement telegram_poll tool with timeout and limit params",
+        "Return messages with combined_context",
+        "Messages claimed on poll (not acked yet)"
+      ],
+      "files": ["src/mcp/server.ts", "src/mcp/tools/poll.ts"]
+    },
+    {
+      "id": "V2-006",
+      "title": "MCP Server - telegram_send tool",
+      "description": "Implement MCP tool for sending messages to Telegram",
+      "priority": "P0",
+      "status": "pending",
+      "dependencies": ["V2-003", "V2-005"],
+      "steps": [
+        "Implement telegram_send tool",
+        "Integrate chunking utility",
+        "Integrate markdown escaping",
+        "Return success with message_id and chunks_sent"
+      ],
+      "files": ["src/mcp/tools/send.ts"]
+    },
+    {
+      "id": "V2-007",
+      "title": "MCP Server - telegram_ack tool",
+      "description": "Implement MCP tool for acknowledging processed messages",
+      "priority": "P0",
+      "status": "pending",
+      "dependencies": ["V2-005"],
+      "steps": [
+        "Implement telegram_ack tool",
+        "Accept array of message_ids",
+        "Call inbox.ackMessages",
+        "Return count of acked messages"
+      ],
+      "files": ["src/mcp/tools/ack.ts"]
+    },
+    {
+      "id": "V2-008",
+      "title": "MCP Server - telegram_send_typing tool",
+      "description": "Implement MCP tool for showing typing indicator",
+      "priority": "P1",
+      "status": "pending",
+      "dependencies": ["V2-003"],
+      "steps": [
+        "Implement telegram_send_typing tool",
+        "Call TelegramClient.sendChatAction"
+      ],
+      "files": ["src/mcp/tools/typing.ts"]
+    },
+    {
+      "id": "V2-009",
+      "title": "Entry point and process management",
+      "description": "Create main entry point that runs both Gateway and MCP Server",
+      "priority": "P0",
+      "status": "pending",
+      "dependencies": ["V2-004", "V2-005", "V2-006", "V2-007"],
+      "steps": [
+        "Create src/index.ts as main entry",
+        "Support running gateway-only mode (--gateway)",
+        "Support running MCP-only mode (--mcp)",
+        "Default: run both",
+        "Add graceful shutdown handling"
+      ],
+      "files": ["src/index.ts", "src/process.ts"]
+    },
+    {
+      "id": "V2-010",
+      "title": "Configuration and environment",
+      "description": "Create configuration module for environment variables and settings",
+      "priority": "P1",
+      "status": "pending",
+      "dependencies": ["V2-001"],
+      "steps": [
+        "Create src/config/index.ts with typed config",
+        "Load from .env with defaults",
+        "Validate required vars on startup",
+        "Document all config options"
+      ],
+      "files": ["src/config/index.ts"]
+    },
+    {
+      "id": "V2-011",
+      "title": "Integration testing",
+      "description": "Create end-to-end tests for the complete flow",
+      "priority": "P1",
+      "status": "pending",
+      "dependencies": ["V2-009"],
+      "steps": [
+        "Setup vitest for testing",
+        "Create mock Telegram API server",
+        "Test webhook → inbox flow",
+        "Test MCP poll → send → ack flow",
+        "Test chunking behavior",
+        "Test deduplication"
+      ],
+      "files": ["tests/integration/*.test.ts"]
+    },
+    {
+      "id": "V2-012",
+      "title": "Documentation and README",
+      "description": "Create user documentation for tg-agent v2",
+      "priority": "P2",
+      "status": "pending",
+      "dependencies": ["V2-009"],
+      "steps": [
+        "Update README.md with v2 architecture",
+        "Document MCP tools usage",
+        "Document configuration options",
+        "Add setup guide",
+        "Add Claude Code integration guide"
+      ],
+      "files": ["README.md", "docs/setup.md", "docs/mcp-tools.md"]
+    }
+  ],
+  "phases": [
+    {
+      "name": "Foundation",
+      "tasks": ["V2-001", "V2-002", "V2-003", "V2-010"],
+      "description": "Core modules and utilities"
+    },
+    {
+      "name": "Gateway",
+      "tasks": ["V2-004"],
+      "description": "Webhook receiver"
+    },
+    {
+      "name": "MCP Server",
+      "tasks": ["V2-005", "V2-006", "V2-007", "V2-008"],
+      "description": "MCP tools implementation"
+    },
+    {
+      "name": "Integration",
+      "tasks": ["V2-009", "V2-011"],
+      "description": "Entry point and testing"
+    },
+    {
+      "name": "Docs",
+      "tasks": ["V2-012"],
+      "description": "Documentation"
+    }
+  ]
+}
