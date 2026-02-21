@@ -1,7 +1,7 @@
 {
   "project": "tg-agent",
   "version": "2.0.0",
-  "last_updated": "2026-02-21T10:00:00Z",
+  "last_updated": "2026-02-21T03:25:00Z",
   "current_focus": null,
   "tasks": [
     {
@@ -9,7 +9,8 @@
       "title": "Project setup and scaffolding",
       "description": "Initialize TypeScript project with proper structure, dependencies, and build configuration",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:25:00Z",
       "dependencies": [],
       "steps": [
         "Initialize package.json with dependencies (express, ioredis, @modelcontextprotocol/sdk)",
@@ -25,7 +26,8 @@
       "title": "Redis inbox module",
       "description": "Create Redis Streams inbox client with consumer group support",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:35:00Z",
       "dependencies": ["V2-001"],
       "steps": [
         "Create InboxClient class with ioredis",
@@ -42,7 +44,8 @@
       "title": "Telegram API client",
       "description": "Create Telegram Bot API client for sending messages",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:35:00Z",
       "dependencies": ["V2-001"],
       "steps": [
         "Create TelegramClient class with fetch-based API calls",
@@ -58,7 +61,8 @@
       "title": "Gateway webhook server",
       "description": "Create Express server to receive Telegram webhooks and write to inbox",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:40:00Z",
       "dependencies": ["V2-002"],
       "steps": [
         "Create Express server with /telegram/webhook endpoint",
@@ -75,7 +79,8 @@
       "title": "MCP Server - telegram_poll tool",
       "description": "Implement MCP tool for polling messages from inbox",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:40:00Z",
       "dependencies": ["V2-002"],
       "steps": [
         "Create MCP server with @modelcontextprotocol/sdk",
@@ -90,7 +95,8 @@
       "title": "MCP Server - telegram_send tool",
       "description": "Implement MCP tool for sending messages to Telegram",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:40:00Z",
       "dependencies": ["V2-003", "V2-005"],
       "steps": [
         "Implement telegram_send tool",
@@ -105,7 +111,8 @@
       "title": "MCP Server - telegram_ack tool",
       "description": "Implement MCP tool for acknowledging processed messages",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:40:00Z",
       "dependencies": ["V2-005"],
       "steps": [
         "Implement telegram_ack tool",
@@ -120,7 +127,8 @@
       "title": "MCP Server - telegram_send_typing tool",
       "description": "Implement MCP tool for showing typing indicator",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:40:00Z",
       "dependencies": ["V2-003"],
       "steps": [
         "Implement telegram_send_typing tool",
@@ -133,7 +141,8 @@
       "title": "Entry point and process management",
       "description": "Create main entry point that runs both Gateway and MCP Server",
       "priority": "P0",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:48:00Z",
       "dependencies": ["V2-004", "V2-005", "V2-006", "V2-007"],
       "steps": [
         "Create src/index.ts as main entry",
@@ -149,7 +158,8 @@
       "title": "Configuration and environment",
       "description": "Create configuration module for environment variables and settings",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:25:00Z",
       "dependencies": ["V2-001"],
       "steps": [
         "Create src/config/index.ts with typed config",
@@ -164,7 +174,8 @@
       "title": "Integration testing",
       "description": "Create end-to-end tests for the complete flow",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:52:00Z",
       "dependencies": ["V2-009"],
       "steps": [
         "Setup vitest for testing",
@@ -181,7 +192,8 @@
       "title": "Documentation and README",
       "description": "Create user documentation for tg-agent v2",
       "priority": "P2",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T03:56:00Z",
       "dependencies": ["V2-009"],
       "steps": [
         "Update README.md with v2 architecture",

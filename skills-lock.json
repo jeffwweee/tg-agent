@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "skills": {
+    "redis-best-practices": {
+      "source": "mindrally/skills",
+      "sourceType": "github",
+      "computedHash": "c362f644a6e3ed9b69a86fef4aa41ebcb4ff15552f03b7431f00642af5d3d5f1"
+    },
+    "typescript-pro": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "github",
+      "computedHash": "58d7cc8354b9714e74d27e3156b328101f2b7b95ed07bd039d701fc29230daf3"
+    }
+  }
+}

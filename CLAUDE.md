@@ -172,7 +172,11 @@ Project-level skills in `.claude/skills/`:
 
 ## Current Status
 
-See `tasks.json` for implementation progress.
+All tasks complete. See `tasks.json` for full implementation history.
 
-**Phase:** Foundation (V2-001 to V2-003, V2-010)
-**Next Task:** V2-001 - Project setup and scaffolding
+**Completed Phases:**
+- Foundation (V2-001, V2-002, V2-003, V2-010)
+- Gateway (V2-004)
+- MCP Server (V2-005, V2-006, V2-007, V2-008)
+- Integration (V2-009, V2-011)
+- Docs (V2-012)

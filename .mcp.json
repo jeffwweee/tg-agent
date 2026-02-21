@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "tg-agent": {
+      "command": "node",
+      "args": ["/Users/jeffwweee/jef/dev-workspace/projects/tg-agent/dist/index.js", "--mcp"],
+      "cwd": "/Users/jeffwweee/jef/dev-workspace/projects/tg-agent"
+    }
+  }
+}
