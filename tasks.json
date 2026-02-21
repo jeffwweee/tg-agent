@@ -209,20 +209,21 @@
       "title": "Tmux wake-up injection",
       "description": "Implement tmux keystroke injection in gateway to wake up Claude Code when Telegram messages arrive. This completes the wake-up mechanism for v2.",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-21T06:27:00Z",
       "dependencies": ["V2-004"],
       "steps": [
         "Create src/gateway/tmux-injector.ts module",
         "Detect if Claude Code is running in a tmux session",
         "Implement keystroke injection using tmux send-keys",
         "Add configurable tmux session name (TMUX_SESSION_NAME env var)",
-        "Add enable/disable flag (TMUX_WAKEUP_ENABLED env var)",
+        "Add enable/disable flag (auto-enable if TMUX_SESSION_NAME is set)",
         "Integrate injector into webhook handler after message saved to inbox",
-        "Add logging for injection events",
+        "Add Telegram error notification on injection failure",
         "Update .env.example with new config options"
       ],
-      "files": ["src/gateway/tmux-injector.ts", "src/gateway/routes/webhook.ts", ".env.example"],
-      "notes": "Wake-up message format: '[TELEGRAM] New message received. Run telegram_poll to read it.'"
+      "files": ["src/gateway/tmux-injector.ts", "src/gateway/server.ts", "src/config/index.ts", ".env.example"],
+      "notes": "Injects /mcp tg-agent:telegram_poll command. Auto-enabled when TMUX_SESSION_NAME is set."
     },
     {
       "id": "V2-014",
