@@ -285,6 +285,28 @@
       ],
       "files": ["src/telegram/client.ts", "src/gateway/server.ts", "src/mcp/tools/ack.ts", "src/inbox/client.ts", ".env.example"],
       "notes": "Requires Telegram Bot API setMessageReaction endpoint. Need to store chat_id + message_id mapping in Redis inbox."
+    },
+    {
+      "id": "V2-017",
+      "title": "Multi-session/Multi-bot support",
+      "description": "Support multiple Telegram bots, each connected to a different tmux session/project. Reflects dev-workspace methodology where multiple Claude Code sessions work on different projects. Core idea: include bot_id in Redis messages and upgrade telegram_poll to filter by bot/session.",
+      "priority": "P2",
+      "status": "pending",
+      "dependencies": ["V2-013", "V2-016"],
+      "steps": [
+        "Brainstorm architecture: per-bot config vs single gateway routing",
+        "Design Redis inbox schema changes (add bot_id field)",
+        "Design telegram_poll filter by bot_id/session",
+        "Design multi-gateway setup (one per bot) vs single gateway multi-tenant",
+        "Implement bot_id in webhook handler and inbox storage",
+        "Update telegram_poll to accept bot_id filter parameter",
+        "Update telegram_send to route to correct bot",
+        "Update tmux injector to target correct session per bot",
+        "Add bots.json config for multi-bot setup",
+        "Test multi-bot scenario: 2 bots, 2 sessions, isolated messaging"
+      ],
+      "files": ["src/config/index.ts", "src/gateway/server.ts", "src/inbox/client.ts", "src/mcp/tools/poll.ts", "src/mcp/tools/send.ts", "src/gateway/tmux-injector.ts", "config/bots.json"],
+      "notes": "Key design question: single gateway routing multiple bots vs separate gateway per bot. Consider dev-workspace session/project mapping."
     }
   ],
   "phases": [
@@ -327,6 +349,11 @@
       "name": "UX Feedback",
       "tasks": ["V2-016"],
       "description": "Typing indicators and reaction-based message status"
+    },
+    {
+      "name": "Multi-tenancy",
+      "tasks": ["V2-017"],
+      "description": "Multi-bot/multi-session support for parallel projects"
     }
   ]
 }
