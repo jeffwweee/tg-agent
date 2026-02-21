@@ -26,6 +26,10 @@ export interface Config {
     serverName: string;
     serverVersion: string;
   };
+  tmux: {
+    sessionName?: string;
+    wakeUpCommand?: string;
+  };
   log: {
     level: string;
   };
@@ -64,6 +68,10 @@ export function loadConfig(): Config {
     mcp: {
       serverName: process.env['MCP_SERVER_NAME'] ?? 'tg-agent',
       serverVersion: process.env['MCP_SERVER_VERSION'] ?? '2.0.0',
+    },
+    tmux: {
+      ...(process.env['TMUX_SESSION_NAME'] ? { sessionName: process.env['TMUX_SESSION_NAME'] } : {}),
+      ...(process.env['TMUX_WAKEUP_COMMAND'] ? { wakeUpCommand: process.env['TMUX_WAKEUP_COMMAND'] } : {}),
     },
     log: {
       level: process.env['LOG_LEVEL'] ?? 'info',

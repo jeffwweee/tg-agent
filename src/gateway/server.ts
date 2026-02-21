@@ -6,6 +6,8 @@
 
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import { InboxClient } from '../inbox/client.js';
+import { TelegramClient } from '../telegram/client.js';
+import { TmuxInjector } from './tmux-injector.js';
 import { logger } from '../utils/logger.js';
 
 export interface GatewayOptions {
@@ -13,6 +15,8 @@ export interface GatewayOptions {
   host?: string;
   allowedUsers?: number[];
   webhookSecret?: string;
+  tmuxSessionName?: string;
+  tmuxWakeUpCommand?: string;
 }
 
 export interface TelegramUpdate {
@@ -49,6 +53,17 @@ function createInboxClient(): InboxClient {
 export function createGateway(options?: GatewayOptions): Express {
   const app = express();
   const inbox = createInboxClient();
+  const telegram = new TelegramClient();
+
+  // Tmux injector (optional)
+  const tmuxSessionName = options?.tmuxSessionName ?? process.env['TMUX_SESSION_NAME'];
+  const tmuxWakeUpCommand = options?.tmuxWakeUpCommand ?? process.env['TMUX_WAKEUP_COMMAND'];
+  const tmuxInjector = tmuxSessionName
+    ? new TmuxInjector({
+        sessionName: tmuxSessionName,
+        ...(tmuxWakeUpCommand ? { command: tmuxWakeUpCommand } : {}),
+      })
+    : null;
 
   const allowedUsers = options?.allowedUsers ??
     (process.env['TELEGRAM_ALLOWED_USERS'] ?? '')
@@ -134,6 +149,27 @@ export function createGateway(options?: GatewayOptions): Express {
         userId,
         textLength: text.length,
       });
+
+      // Tmux wake-up injection (non-blocking)
+      if (tmuxInjector) {
+        tmuxInjector.inject().then(async (result) => {
+          if (!result.success) {
+            logger.warn(`Tmux injection failed, sending Telegram notification`, {
+              error: result.error,
+              chatId: message.chat.id,
+            });
+
+            // Send error notification to Telegram
+            const errorMessage = `⚠️ Tmux wake-up failed: ${result.error}\n\nThe message was saved to inbox. Claude Code will process it on next poll.`;
+            await telegram.sendMessage({
+              chatId: message.chat.id,
+              text: errorMessage,
+            });
+          }
+        }).catch((error) => {
+          logger.error('Tmux injection error', { error: error instanceof Error ? error.message : 'Unknown' });
+        });
+      }
 
       res.json({ ok: true, processed: true, inboxId });
     } catch (error) {
