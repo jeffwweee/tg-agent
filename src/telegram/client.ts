@@ -39,6 +39,13 @@ export type ChatActionType =
   | 'upload_video_note'
   | 'choose_sticker';
 
+export interface SetReactionOptions {
+  chatId: number;
+  messageId: number;
+  reaction: string;
+  isBig?: boolean;
+}
+
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY = 1000;
 
@@ -48,11 +55,19 @@ export class TelegramClient {
   private maxRetries: number;
   private retryDelay: number;
 
-  constructor(options?: TelegramClientOptions) {
-    this.botToken = options?.botToken ?? process.env['TELEGRAM_BOT_TOKEN'] ?? '';
-    this.apiUrl = options?.apiUrl ?? `https://api.telegram.org/bot${this.botToken}`;
-    this.maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
-    this.retryDelay = options?.retryDelay ?? DEFAULT_RETRY_DELAY;
+  constructor(options?: TelegramClientOptions | string) {
+    // Allow passing bot token directly as string
+    if (typeof options === 'string') {
+      this.botToken = options || process.env['TELEGRAM_BOT_TOKEN'] || '';
+      this.apiUrl = `https://api.telegram.org/bot${this.botToken}`;
+      this.maxRetries = DEFAULT_MAX_RETRIES;
+      this.retryDelay = DEFAULT_RETRY_DELAY;
+    } else {
+      this.botToken = options?.botToken ?? process.env['TELEGRAM_BOT_TOKEN'] ?? '';
+      this.apiUrl = options?.apiUrl ?? `https://api.telegram.org/bot${this.botToken}`;
+      this.maxRetries = options?.maxRetries ?? DEFAULT_MAX_RETRIES;
+      this.retryDelay = options?.retryDelay ?? DEFAULT_RETRY_DELAY;
+    }
   }
 
   /**
@@ -92,6 +107,31 @@ export class TelegramClient {
    */
   async getMe(): Promise<{ ok: boolean; result?: unknown; error?: string }> {
     return this.request('getMe', {});
+  }
+
+  /**
+   * Set a reaction on a message
+   */
+  async setMessageReaction(options: SetReactionOptions): Promise<{ ok: boolean; error?: string }> {
+    // Map emoji to Telegram reaction type
+    const reactionEmoji = options.reaction;
+    const reaction = [{ type: 'emoji', emoji: reactionEmoji }];
+
+    const body: Record<string, unknown> = {
+      chat_id: options.chatId,
+      message_id: options.messageId,
+      reaction: JSON.stringify(reaction),
+    };
+
+    if (options.isBig !== undefined) {
+      body['is_big'] = options.isBig;
+    }
+
+    const result = await this.request('setMessageReaction', body);
+    if (result.error) {
+      return { ok: result.ok, error: result.error };
+    }
+    return { ok: result.ok };
   }
 
   /**

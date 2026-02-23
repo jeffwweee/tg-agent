@@ -17,6 +17,7 @@ import { pollTool, handlePoll } from './tools/poll.js';
 import { sendTool, handleSend } from './tools/send.js';
 import { ackTool, handleAck } from './tools/ack.js';
 import { typingTool, handleTyping } from './tools/typing.js';
+import { replyTool, handleReply } from './tools/reply.js';
 import { logger } from '../utils/logger.js';
 
 export interface McpServerOptions {
@@ -30,7 +31,7 @@ export interface McpServerContext {
 }
 
 // Tool registry
-const tools: Tool[] = [pollTool, sendTool, ackTool, typingTool];
+const tools: Tool[] = [pollTool, sendTool, ackTool, typingTool, replyTool];
 
 export function createMcpServer(options?: McpServerOptions): Server {
   const server = new Server(
@@ -81,6 +82,11 @@ export function createMcpServer(options?: McpServerOptions): Server {
 
         case 'telegram_send_typing': {
           const result = await handleTyping(context, args ?? {});
+          return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+        }
+
+        case 'telegram_reply': {
+          const result = await handleReply(context, args ?? {});
           return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
         }
 

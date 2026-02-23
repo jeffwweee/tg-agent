@@ -2,10 +2,12 @@
  * Redis Streams Inbox Client
  *
  * Manages message inbox with consumer groups and lease-based claiming.
+ * Supports session-aware namespacing for multi-tenant deployments.
  */
 
 import Redis from 'ioredis';
 import type { InboxMessage, InboxClientOptions } from './types.js';
+import { getSessionId } from '../config/sessions.js';
 
 const DEFAULT_LEASE_MS = 12 * 60 * 60 * 1000; // 12 hours
 
@@ -15,12 +17,22 @@ export class InboxClient {
   private consumerGroup: string;
   private consumerName: string;
   private leaseMs: number;
+  private sessionId: string;
 
-  constructor(options?: InboxClientOptions) {
+  constructor(options?: InboxClientOptions & { sessionId?: string }) {
     this.redis = new Redis(options?.redisUrl ?? process.env['REDIS_URL'] ?? 'redis://localhost:6379');
-    this.streamKey = options?.streamKey ?? process.env['INBOX_STREAM_KEY'] ?? 'tg:inbox';
+    this.sessionId = options?.sessionId ?? getSessionId();
+
+    // Use session-aware stream key: tg:inbox:{session_id}
+    // Falls back to legacy key if sessionId is 'default' and no multi-session config
+    const baseKey = options?.streamKey ?? process.env['INBOX_STREAM_KEY'] ?? 'tg:inbox';
+    this.streamKey = this.sessionId !== 'default'
+      ? `${baseKey}:${this.sessionId}`
+      : baseKey;
+
     this.consumerGroup = options?.consumerGroup ?? process.env['INBOX_CONSUMER_GROUP'] ?? 'tg-consumer';
-    this.consumerName = `consumer-${process.pid}-${Date.now()}`;
+    // Use consistent consumer name per session (not timestamp-based)
+    this.consumerName = `consumer-${this.sessionId}`;
     this.leaseMs = options?.leaseMs ?? Number(process.env['MESSAGE_LEASE_MS'] ?? String(DEFAULT_LEASE_MS));
   }
 
@@ -43,7 +55,7 @@ export class InboxClient {
    * Add a message to the inbox with deduplication
    * Uses message_id field for deduplication within a 24h window
    */
-  async addMessage(message: Omit<InboxMessage, 'id'>): Promise<string> {
+  async addMessage(message: Omit<InboxMessage, 'id'> & { tgMessageId?: number }): Promise<string> {
     const messageId = message.messageId ?? `${message.chatId}-${message.timestamp}`;
 
     // Build flat array for xadd
@@ -54,6 +66,10 @@ export class InboxClient {
       'timestamp', message.timestamp,
       'message_id', messageId,
     ];
+
+    if (message.tgMessageId !== undefined) {
+      args.push('tg_message_id', message.tgMessageId);
+    }
 
     if (message.combinedContext !== undefined) {
       args.push('combined_context', message.combinedContext);
@@ -214,6 +230,12 @@ export class InboxClient {
       if (data['message_id']) {
         msg.messageId = data['message_id'];
       }
+      if (data['tg_message_id']) {
+        const tgMsgId = Number(data['tg_message_id']);
+        if (!Number.isNaN(tgMsgId)) {
+          msg.tgMessageId = tgMsgId;
+        }
+      }
       if (data['combined_context']) {
         msg.combinedContext = data['combined_context'];
       }
@@ -236,6 +258,51 @@ export class InboxClient {
       return pending[0];
     }
     return 0;
+  }
+
+  /**
+   * Get messages by their Redis stream IDs
+   * Used by telegram_reply to get specific messages for acking
+   */
+  async getMessagesByIds(ids: string[]): Promise<InboxMessage[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    // Use XRANGE to fetch specific messages
+    const messages: InboxMessage[] = [];
+
+    for (const id of ids) {
+      const result = await this.redis.xrange(this.streamKey, id, id);
+      if (result && result.length > 0) {
+        const entry = result[0];
+        if (entry && Array.isArray(entry) && entry.length >= 2) {
+          const fields = entry[1];
+          if (Array.isArray(fields)) {
+            const message = this.parseMessage(id, fields as string[]);
+            if (message) {
+              messages.push(message);
+            }
+          }
+        }
+      }
+    }
+
+    return messages;
+  }
+
+  /**
+   * Get the session ID for this client
+   */
+  getSessionId(): string {
+    return this.sessionId;
+  }
+
+  /**
+   * Get the stream key for this client
+   */
+  getStreamKey(): string {
+    return this.streamKey;
   }
 
   /**
