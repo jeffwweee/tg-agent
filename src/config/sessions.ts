@@ -2,7 +2,10 @@
  * Session Configuration Module
  *
  * Loads and manages session configuration from workspace-level sessions.json.
- * Session ID is set explicitly via TG_SESSION_ID env var (by dev-workspace).
+ * Session ID can be detected from:
+ * 1. TG_SESSION_ID env var (explicit)
+ * 2. Current tmux session name (auto-detect)
+ * 3. Default session from config
  */
 
 import { readFileSync, existsSync } from 'fs';
@@ -64,10 +67,72 @@ export function loadSessionsConfig(): SessionsConfig {
 }
 
 /**
- * Get the current session ID from environment
+ * Get the current tmux session name
+ * Returns null if not in a tmux session
+ */
+export function getTmuxSessionName(): string | null {
+  // Check if we're in a tmux session
+  if (!process.env['TMUX']) {
+    return null;
+  }
+
+  try {
+    const { execSync } = require('child_process');
+    const sessionName = execSync('tmux display-message -p "#S"', {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    return sessionName || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Find session ID by tmux session name
+ */
+export function findSessionByTmuxName(tmuxName: string): string | null {
+  const config = loadSessionsConfig();
+
+  for (const [sessionId, sessionConfig] of Object.entries(config.sessions)) {
+    if (sessionConfig.tmux_session === tmuxName) {
+      return sessionId;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Get the current session ID
+ * Priority: TG_SESSION_ID env var > tmux session detection > default
  */
 export function getSessionId(): string {
-  return process.env['TG_SESSION_ID'] || 'default';
+  // 1. Check explicit env var first
+  const envSessionId = process.env['TG_SESSION_ID'];
+  if (envSessionId) {
+    return envSessionId;
+  }
+
+  // 2. Try to detect from tmux session name
+  const tmuxName = getTmuxSessionName();
+  if (tmuxName) {
+    const sessionId = findSessionByTmuxName(tmuxName);
+    if (sessionId) {
+      logger.debug(`Auto-detected session from tmux: ${tmuxName} -> ${sessionId}`);
+      return sessionId;
+    }
+    logger.debug(`Tmux session "${tmuxName}" not found in sessions config`);
+  }
+
+  // 3. Fallback to default session from config
+  const defaultSession = getDefaultSessionId();
+  if (defaultSession) {
+    return defaultSession;
+  }
+
+  // 4. Ultimate fallback
+  return 'default';
 }
 
 /**

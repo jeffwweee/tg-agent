@@ -305,8 +305,12 @@ export function createGateway(options?: GatewayOptions): Express {
     logger.info(`Message added to inbox`, { inboxId, sessionId: requestedSessionId, chatId: message.chat.id, userId, textLength: text.length });
 
     // Send typing indicator and reaction
-    resources.telegram.sendChatAction(message.chat.id, 'typing').catch(() => {});
-    resources.telegram.setMessageReaction({ chatId: message.chat.id, messageId: message.message_id, reaction: '👀' }).catch(() => {});
+    resources.telegram.sendChatAction(message.chat.id, 'typing').catch((err) => {
+      logger.debug('Failed to send typing indicator', { error: String(err) });
+    });
+    resources.telegram.setMessageReaction({ chatId: message.chat.id, messageId: message.message_id, reaction: '👀' }).catch((err) => {
+      logger.debug('Failed to set reaction', { error: String(err) });
+    });
 
     // Tmux wake-up injection
     if (resources.tmuxInjector) {

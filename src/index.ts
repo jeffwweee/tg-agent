@@ -15,6 +15,7 @@ config();
 import { createGateway, shutdownGateway } from './gateway/server.js';
 import { createMcpServer, connectMcpServer } from './mcp/server.js';
 import { loadConfig, validateConfig } from './config/index.js';
+import { getSessionId, getTmuxSessionName, getSessionConfig } from './config/sessions.js';
 import { logger } from './utils/logger.js';
 import type { Express } from 'express';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -110,6 +111,17 @@ async function main(): Promise<void> {
 
   // Start MCP Server
   if (runMcp) {
+    // Log detected session info
+    const sessionId = getSessionId();
+    const tmuxName = getTmuxSessionName();
+    const sessionConfig = getSessionConfig(sessionId);
+
+    logger.info('MCP Server session detected', {
+      sessionId,
+      tmuxSession: tmuxName || 'not in tmux',
+      botUsername: sessionConfig?.bot_username || 'unknown',
+    });
+
     mcpServer = createMcpServer({
       name: cfg.mcp.serverName,
       version: cfg.mcp.serverVersion,
