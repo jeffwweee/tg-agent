@@ -182,32 +182,44 @@ this.consumerName = `consumer-${this.sessionId}`;
 
 **Problem:** After restart, `telegram_poll` still returns empty messages array.
 
+**Root Cause:** The `getMessages()` function was only reading NEW messages using `XREADGROUP ... ">"`. Messages already delivered to the consumer (pending) were invisible because `>` only returns undelivered messages.
+
 **Symptoms:**
 - Messages ARE in Redis streams (verified with `XRANGE`)
-- Pending count shows 0 (all messages acked)
-- Fresh consumer CAN read messages with `XREADGROUP`
+- Pending count shows messages are owned by consumer
+- `XREADGROUP ... ">"` returns nothing (no NEW messages)
+- `XREADGROUP ... "0"` returns pending messages
 
-**Possible Causes:**
-1. MCP server using cached/old compiled code
-2. Consumer group state not matching expected consumer name
-3. Session ID mismatch between gateway and MCP server
+**Fix:** Updated `InboxClient.getMessages()` to:
+1. First check for pending messages using `XREADGROUP ... "0"`
+2. If pending messages exist, return them
+3. If no pending, then read new messages with `XREADGROUP ... ">"`
 
-**Debug Commands:**
-```bash
-# Check stream length
-redis-cli XLEN tg:inbox:SESSION_X01
+```typescript
+// First, check for pending messages for this consumer (use "0" to read pending)
+const pendingResult = await this.redis.xreadgroup(
+  'GROUP', this.consumerGroup, this.consumerName,
+  'COUNT', String(count),
+  'STREAMS', this.streamKey, '0'
+);
 
-# Check pending messages
-redis-cli XPENDING tg:inbox:SESSION_X01 tg-consumer
+if (pendingResult && pendingResult.length > 0) {
+  const messages = this.parseStreamResult(pendingResult);
+  if (messages.length > 0) {
+    return messages;
+  }
+}
 
-# Try reading with expected consumer name
-redis-cli XREADGROUP GROUP tg-consumer consumer-SESSION_X01 COUNT 5 STREAMS tg:inbox:SESSION_X01 ">"
-
-# Check compiled code
-grep "consumerName" dist/inbox/client.js
+// No pending messages, read new messages with long-polling
+const result = await this.redis.xreadgroup(
+  'GROUP', this.consumerGroup, this.consumerName,
+  'COUNT', String(count),
+  'BLOCK', String(timeout),
+  'STREAMS', this.streamKey, '>'
+);
 ```
 
-**Status:** UNRESOLVED - Requires further investigation
+**Status:** ✅ RESOLVED - Commit 7a6b438
 
 ### Issue 3: /skill vs /command
 
@@ -227,7 +239,7 @@ grep "consumerName" dist/inbox/client.js
 | `src/mcp/tools/reply.ts` | NEW - telegram_reply tool |
 | `src/gateway/server.ts` | Session-specific webhooks, notification spam fix |
 | `src/gateway/tmux-injector.ts` | sessionExists() method |
-| `src/inbox/client.ts` | Consistent consumer name, session namespacing |
+| `src/inbox/client.ts` | Consistent consumer name, session namespacing, pending message fix |
 | `src/inbox/types.ts` | Added tgMessageId field |
 | `src/mcp/server.ts` | Registered telegram_reply tool |
 | `src/telegram/client.ts` | setMessageReaction(), string constructor |
@@ -237,18 +249,18 @@ grep "consumerName" dist/inbox/client.js
 
 ## Next Steps
 
-1. **Debug telegram_poll issue:**
-   - Verify MCP server is using updated code
-   - Check consumer group state in Redis
-   - Test with fresh Redis database
+1. ✅ **Fixed: telegram_poll pending message issue**
+   - Root cause: `XREADGROUP ... ">"` only reads NEW messages
+   - Solution: Check pending messages first with `XREADGROUP ... "0"`
 
-2. **Consider alternative approach:**
-   - Use XREAD instead of XREADGROUP for simpler message consumption
-   - Or implement message claiming with XCLAIM for pending messages
+2. **Testing:**
+   - Integration tests for multi-session flow
+   - Test consumer group behavior with concurrent consumers
 
-3. **Testing:**
-   - Create integration tests for multi-session flow
-   - Test consumer group behavior
+3. **Production Deployment:**
+   - Set webhooks for each bot
+   - Verify Cloudflare tunnel is running
+   - Monitor Redis stream lengths
 
 ## Test Results
 
@@ -257,15 +269,40 @@ grep "consumerName" dist/inbox/client.js
 - ✅ Messages saved to correct Redis streams
 - ✅ Reactions and typing indicators working
 
-### MCP Poll
-- ❌ Returns 0 messages despite messages in stream
-- ❌ Consumer group state unclear
+### MCP telegram_reply
+- ✅ Poll returns pending messages correctly
+- ✅ Reply sends message and acks original
+- ✅ State management works (poll → reply → ack flow)
+- ✅ Multiple messages combined into combined_context
+
+### Full Flow Test (2026-02-24)
+```json
+// Step 1: Poll
+{
+  "ok": true,
+  "action": "poll",
+  "messages": [{"id": "1771897402415-0", "chat_id": 195061634, ...}],
+  "count": 1
+}
+
+// Step 2: Reply
+{
+  "ok": true,
+  "action": "reply",
+  "message_ids": [23],
+  "chunks_sent": 1,
+  "acked": 1
+}
+
+// Step 3: Verify
+Pending messages: 0
+```
 
 ### Redis Verification
 ```
-SESSION_X01 length: 18
-SESSION_X02 length: 6
-Pending: 0
+SESSION_X01 stream: 1 message
+Pending after poll: 1 (owned by consumer-SESSION_X01)
+Pending after reply: 0
 ```
 
 ## References
