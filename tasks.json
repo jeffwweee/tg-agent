@@ -1,7 +1,7 @@
 {
   "project": "tg-agent",
   "version": "2.0.0",
-  "last_updated": "2026-02-21T06:45:00Z",
+  "last_updated": "2026-02-24T01:50:00Z",
   "current_focus": null,
   "tasks": [
     {
@@ -230,7 +230,8 @@
       "title": "Response hook for auto-send",
       "description": "Implement Claude Code hook that automatically sends responses to Telegram when Claude Code completes a response or task.",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-23T04:30:00Z",
       "dependencies": ["V2-006", "V2-013"],
       "steps": [
         "Research Claude Code hook system (Stop hook, Notification hook)",
@@ -271,7 +272,8 @@
       "title": "Gateway typing indicator and reaction feedback",
       "description": "Gateway should send typing indicator to Telegram chat when message arrives, and add a reaction (👀) to the original message. When message is acknowledged via telegram_ack, update the reaction to ✅ to show it was processed.",
       "priority": "P1",
-      "status": "pending",
+      "status": "completed",
+      "completedAt": "2026-02-23T04:30:00Z",
       "dependencies": ["V2-004", "V2-007"],
       "steps": [
         "Add setMessageReaction method to TelegramClient (Telegram Bot API)",
@@ -288,25 +290,29 @@
     },
     {
       "id": "V2-017",
-      "title": "Multi-session/Multi-bot support",
-      "description": "Support multiple Telegram bots, each connected to a different tmux session/project. Reflects dev-workspace methodology where multiple Claude Code sessions work on different projects. Core idea: include bot_id in Redis messages and upgrade telegram_poll to filter by bot/session.",
-      "priority": "P2",
-      "status": "pending",
+      "title": "Multi-session/Multi-bot support with telegram_reply",
+      "description": "Support multiple Telegram bots, each connected to a different tmux session/project. Includes new telegram_reply MCP tool for stateful conversation handling. Supports group chats with @mention routing. Replaces Stop hook with explicit MCP control.",
+      "priority": "P0",
+      "status": "completed",
+      "completedAt": "2026-02-24T01:50:00Z",
       "dependencies": ["V2-013", "V2-016"],
       "steps": [
-        "Brainstorm architecture: per-bot config vs single gateway routing",
-        "Design Redis inbox schema changes (add bot_id field)",
-        "Design telegram_poll filter by bot_id/session",
-        "Design multi-gateway setup (one per bot) vs single gateway multi-tenant",
-        "Implement bot_id in webhook handler and inbox storage",
-        "Update telegram_poll to accept bot_id filter parameter",
-        "Update telegram_send to route to correct bot",
-        "Update tmux injector to target correct session per bot",
-        "Add bots.json config for multi-bot setup",
-        "Test multi-bot scenario: 2 bots, 2 sessions, isolated messaging"
+        "Create dev-workspace/config/sessions.json schema with bot_username, chat_ids array",
+        "Create src/config/sessions.ts module (reads from workspace-level config, no hot-reload)",
+        "Update InboxClient to accept session_id for Redis key namespacing",
+        "Update Gateway for multi-tenant webhook routing (match bot_token in config)",
+        "Update Gateway to validate chat_id against session's chat_ids array",
+        "Create src/mcp/tools/reply.ts - stateful telegram_reply tool",
+        "Register telegram_reply in MCP server",
+        "Update TmuxInjector to use session-specific config",
+        "Add dev-workspace/config/sessions.json.example template",
+        "Update .env.example with TG_SESSION_ID, TG_SESSIONS_CONFIG options",
+        "Test: single session with direct chat (backward compat)",
+        "Test: multi-session with 2 bots/sessions",
+        "Test: group chat with @mention routing"
       ],
-      "files": ["src/config/index.ts", "src/gateway/server.ts", "src/inbox/client.ts", "src/mcp/tools/poll.ts", "src/mcp/tools/send.ts", "src/gateway/tmux-injector.ts", "config/bots.json"],
-      "notes": "Key design question: single gateway routing multiple bots vs separate gateway per bot. Consider dev-workspace session/project mapping."
+      "files": ["dev-workspace/config/sessions.json", "src/config/sessions.ts", "src/gateway/server.ts", "src/inbox/client.ts", "src/mcp/tools/reply.ts", "src/mcp/server.ts", "src/gateway/tmux-injector.ts"],
+      "notes": "Design doc: docs/plans/2026-02-23-multi-session-telegram-reply-design.md. Config is WORKSPACE-LEVEL. TG_SESSION_ID set by dev-workspace. No hot-reload needed."
     },
     {
       "id": "V2-018",
@@ -348,6 +354,27 @@
       ],
       "files": ["src/mcp/tools/clear.ts", "src/gateway/server.ts", "src/gateway/tmux-injector.ts"],
       "notes": "Consider Claude Code's native /compact command. May need to inject keystroke into tmux to trigger built-in context management."
+    },
+    {
+      "id": "V2-020",
+      "title": "Fix duplicate Telegram messages and MarkdownV2 formatting",
+      "description": "Investigate and fix duplicate Telegram messages caused by both Stop hook and telegram_send being triggered. Also verify MarkdownV2 formatting is correctly escaped in both paths.",
+      "priority": "P2",
+      "status": "completed",
+      "completedAt": "2026-02-23T12:00:00Z",
+      "dependencies": ["V2-014"],
+      "steps": [
+        "Investigate current message flow: Stop hook vs telegram_send",
+        "Identify why both paths are sending messages",
+        "Determine correct architecture: either Stop hook OR telegram_send, not both",
+        "Review MarkdownV2 escaping in Stop hook response handler",
+        "Review MarkdownV2 escaping in telegram_send tool",
+        "Ensure consistent formatting across both paths",
+        "Add tests for MarkdownV2 special character escaping",
+        "Test duplicate message scenario and verify fix"
+      ],
+      "files": ["hooks/response-hook.ts", "src/mcp/tools/send.ts", "src/telegram/escape.ts"],
+      "notes": "SOLUTION: Stop hook disabled by user. Implementing telegram_reply tool (V2-017) as MCP-only solution with explicit control."
     }
   ],
   "phases": [
@@ -389,7 +416,7 @@
     {
       "name": "UX Feedback",
       "tasks": ["V2-016"],
-      "description": "Typing indicators and reaction-based message status"
+      "description": "Typing indicators, reaction-based message status"
     },
     {
       "name": "Multi-tenancy",
