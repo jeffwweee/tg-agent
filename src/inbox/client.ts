@@ -88,12 +88,29 @@ export class InboxClient {
   /**
    * Get messages from the inbox using consumer group
    * Implements long-polling and lease-based claiming
+   *
+   * Reads pending messages first (already delivered to this consumer),
+   * then new messages if no pending.
    */
   async getMessages(count: number = 10, timeout: number = 5000): Promise<InboxMessage[]> {
     // First, try to claim any expired messages (lease reclaim)
     await this.reclaimExpiredMessages();
 
-    // Read from consumer group with long-polling
+    // First, check for pending messages for this consumer (use "0" to read pending)
+    const pendingResult = await this.redis.xreadgroup(
+      'GROUP', this.consumerGroup, this.consumerName,
+      'COUNT', String(count),
+      'STREAMS', this.streamKey, '0'
+    );
+
+    if (pendingResult && pendingResult.length > 0) {
+      const messages = this.parseStreamResult(pendingResult);
+      if (messages.length > 0) {
+        return messages;
+      }
+    }
+
+    // No pending messages, read new messages with long-polling
     const result = await this.redis.xreadgroup(
       'GROUP', this.consumerGroup, this.consumerName,
       'COUNT', String(count),
@@ -105,6 +122,13 @@ export class InboxClient {
       return [];
     }
 
+    return this.parseStreamResult(result);
+  }
+
+  /**
+   * Parse XREADGROUP result into InboxMessage array
+   */
+  private parseStreamResult(result: unknown[]): InboxMessage[] {
     const messages: InboxMessage[] = [];
 
     // Result format: [[streamKey, [[id, [field1, value1, ...]], ...]], ...]
