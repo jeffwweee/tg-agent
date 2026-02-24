@@ -103,4 +103,18 @@ export class TmuxInjector {
       proc.on('close', (code) => resolve(code === 0));
     });
   }
+
+  /**
+   * Check if the target session exists
+   */
+  async sessionExists(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const proc = spawn('tmux', ['has-session', '-t', this.sessionName], {
+        stdio: 'ignore',
+      });
+
+      proc.on('error', () => resolve(false));
+      proc.on('close', (code) => resolve(code === 0));
+    });
+  }
 }

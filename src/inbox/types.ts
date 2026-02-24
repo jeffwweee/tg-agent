@@ -15,6 +15,8 @@ export interface InboxMessage {
   timestamp: number;
   /** Original Telegram message ID (for deduplication) */
   messageId?: string;
+  /** Telegram message ID (for reactions) */
+  tgMessageId?: number;
   /** Combined context from multiple messages (if applicable) */
   combinedContext?: string;
 }
